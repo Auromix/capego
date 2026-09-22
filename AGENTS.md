@@ -1,8 +1,8 @@
-# captureego working agreements
+# CapEgo working agreements
 
 ## Scope and decisions
 
-- 项目名称为 `captureego`，目标仓库为 `Auromix/captureego`。
+- 项目品牌名称为 **CapEgo**，仓库及命令标识使用 `capego`，目标仓库为 `Auromix/capego`。
 - 当前处于产品设计讨论阶段。先与用户逐步讨论，再修改涉及决策的产品、软件或硬件设计；明确授权的初始化、检查和修正可直接执行。
 - 每轮优先澄清一个影响产品边界的问题。优先讨论使用者、任务和交付结果，暂不确定软硬件选型。
 - 以用户最新确认的范围为准。不能把助手建议、外部项目做法或客户候选指标自动转成已确认设计。

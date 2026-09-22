@@ -1,12 +1,12 @@
-# captureego
+# CapEgo
 
-**Open-source ego / egocentric capture, local automatic annotation, and dataset production for world-action-model training.**
+**Open-source egocentric capture and dataset toolkit.**
 
-**开源第一视角采集、本地自动标注与 WAM 训练数据集生产项目。**
+**开源第一视角采集与数据集工具链。**
 
 > **Status: design stage / 设计阶段。** This repository currently contains product scope and discussion inputs. It does not yet provide working hardware, recording software, annotation tools, or verified training integrations.
 
-captureego is being designed for open-source developers and researchers, starting with a reproducible reference setup for one person performing tabletop hand operations. During recording, the capture device continuously transfers data to another PC running Ubuntu 24.04 on the same LAN, where it is saved to disk. Users explicitly start batch post-processing; automatic annotation, human review, and versioned dataset production then take place locally. Exported datasets must be validated against named open-source WAM training repositories and versions before compatibility is claimed.
+CapEgo is being designed for open-source developers and researchers, starting with a reproducible reference setup for one person performing tabletop hand operations. During recording, the capture device continuously transfers data to another PC running Ubuntu 24.04 on the same LAN, where it is saved to disk. Users explicitly start batch post-processing; automatic annotation, human review, and versioned dataset production then take place locally. Exported datasets must be validated against named open-source WAM training repositories and versions before compatibility is claimed.
 
 项目面向开源开发者和研究者，首版提供个人或单个实验台能够完整复现的方案，从桌面物体操作开始，并保留更换采集设备、处理工具和导出方式的扩展空间。以下产品行为已确认，具体实现和量化验收条件仍需设计。
 
