@@ -70,7 +70,7 @@ def write_egowam(store, dataset, output, config):
         import zarr
         from zarr.core.dtype import VariableLengthBytes
     except ImportError as exc:
-        raise StoreError("export_dependencies_missing", "Install capego[training] for EgoWAM export", 422) from exc
+        raise StoreError("export_dependencies_missing", "Install capego[export] for EgoWAM export", 422) from exc
     episodes, filtered = [], []
     for item in dataset["items"]:
         rec = store.recording(item["recording_id"])

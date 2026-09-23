@@ -149,7 +149,7 @@ class Outbox:
             rows = db.execute("SELECT sequence,sha256,timestamp_ns FROM packets ORDER BY sequence").fetchall()
             last_time = max((r["timestamp_ns"] for r in rows), default=0)
             end = EndRecording(packet_count=len(rows), content_sha256=sequence_digest([(r["sequence"], r["sha256"]) for r in rows]),
-                               ended_at_ns=max(last_time, ended_at_ns or 0), reason=reason)
+                               ended_at_ns=max(last_time + (1 if rows else 0), ended_at_ns or 0), reason=reason)
             db.execute("INSERT INTO metadata VALUES ('end',?)", (canonical(end.model_dump()).decode(),))
         return end
 

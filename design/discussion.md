@@ -1,6 +1,6 @@
 # 后续设计讨论
 
-产品头脑风暴及首轮总体设计讨论已完成，确认结论分别维护在[产品定义](product/scope.md)、[总体架构](system/overview.md)和[处理与数据集设计](data/processing.md)。当前尚未进入实现。
+产品头脑风暴及首轮总体设计讨论已完成，确认结论分别维护在[产品定义](product/scope.md)、[总体架构](system/overview.md)和[处理与数据集设计](data/processing.md)。2026-09-24 已按用户授权进入实现；当前完成范围见[软件验证记录](validation/2026-09-24-software.md)，下方早期讨论建议不代表最新实现状态。
 
 ## 已明确的设计起点
 

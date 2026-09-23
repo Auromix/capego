@@ -164,3 +164,24 @@ def test_vlm_missing_model_fails_per_job_without_fallback(captured, monkeypatch)
         assert "Provision" in job["error"]
     finally:
         processor.close()
+
+
+def test_invalid_hand_frame_splits_training_windows(captured, monkeypatch):
+    pytest.importorskip("zarr")
+    from capego import processing
+    original = processing.synthetic_geometry
+
+    def partial(times):
+        geometry = original(times)
+        geometry["frames"][4]["hands"]["left"]["wrist_valid"] = False
+        return geometry
+
+    monkeypatch.setattr(processing, "synthetic_geometry", partial)
+    store, _ = captured
+    job = process(store)
+    dataset = create_dataset(store, selection(job))
+    report = export_dataset(store, dataset["id"], ExportRequest(format="egowam"))
+    assert [e["frames"] for e in report["episodes"]] == [4, 5]
+    assert report["filtered"][0]["frames"] == 1
+    assert report["episodes"][1]["start_ns"] == 500_000_000
+    assert read_result(store, job["id"])["result"]["geometry"]["frames"][4]["hands"]["right"]["wrist_valid"] is True

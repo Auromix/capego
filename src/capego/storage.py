@@ -209,7 +209,7 @@ class Store:
                 spec = RecordingSpec.model_validate_json(rec["spec"])
                 if rec["end_spec"]:
                     end = EndRecording.model_validate_json(rec["end_spec"])
-                    if packet.sequence >= end.packet_count or packet.timestamp_ns > end.ended_at_ns:
+                    if packet.sequence >= end.packet_count or packet.timestamp_ns >= end.ended_at_ns:
                         raise StoreError("outside_recording", "Packet falls outside the frozen recording")
                 self.validate_payload(packet, spec)
                 self.ready()
@@ -256,6 +256,9 @@ class Store:
             else:
                 status = "complete"
                 try:
+                    folder = self.root / "recordings" / recording_id
+                    if (folder / "recording.json").read_bytes() != row["spec"].encode() or (folder / "end.json").read_bytes() != row["end_spec"].encode():
+                        raise ValueError("Recording metadata file differs from frozen index")
                     if [p["sequence"] for p in packets] != list(range(end.packet_count)):
                         raise ValueError("Packet sequence does not match recording end manifest")
                     if sequence_digest([(p["sequence"], p["sha256"]) for p in packets]) != end.content_sha256:
@@ -265,7 +268,7 @@ class Store:
                         data = (self.root / p["path"]).read_bytes()
                         if sha256(data) != p["sha256"]:
                             raise ValueError(f"Corrupt packet {p['sequence']}")
-                        if p["timestamp_ns"] > end.ended_at_ns:
+                        if p["timestamp_ns"] >= end.ended_at_ns:
                             raise ValueError("Packet time exceeds recording end")
                         if p["timestamp_ns"] <= last_times.get(p["stream_id"], -1):
                             raise ValueError("Per-stream capture timestamps must increase")

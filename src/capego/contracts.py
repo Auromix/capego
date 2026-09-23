@@ -58,6 +58,8 @@ class RecordingSpec(Contract):
     def unique_streams(self):
         if len({s.id for s in self.streams}) != len(self.streams):
             raise ValueError("Stream IDs must be unique")
+        canonical(self.calibration)
+        canonical(self.clock)
         return self
 
 

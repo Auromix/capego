@@ -10,7 +10,7 @@ import uuid
 from pathlib import Path
 
 from .capture import CaptureSession, HTTPTransport, Outbox
-from .sources import synthetic_packets, synthetic_spec
+from .sources import replay_packets, synthetic_packets, synthetic_spec
 from .storage import Store
 
 
@@ -43,6 +43,13 @@ def parser():
     resume.add_argument("outbox")
     resume.add_argument("--url", default="http://127.0.0.1:8765")
     resume.add_argument("--wait", type=float, default=60)
+    replay = sub.add_parser("replay", help="Replay an archived recording through the same continuous transport")
+    replay.add_argument("recording_id")
+    replay.add_argument("--source-root", required=True)
+    replay.add_argument("--url", default="http://127.0.0.1:8765")
+    replay.add_argument("--outbox", required=True)
+    replay.add_argument("--wait", type=float, default=60)
+    replay.add_argument("--fast", action="store_true")
     verify = sub.add_parser("verify")
     verify.add_argument("recording_id")
     verify.add_argument("--root", default="runtime/pc")
@@ -124,13 +131,22 @@ def main(argv=None):
             result = Store(args.root).verify(args.recording_id)
             emit(result)
             return 0 if result["status"] == "complete" else 1
-        elif args.command in {"simulate", "resume"}:
+        elif args.command in {"simulate", "resume", "replay"}:
             transport = HTTPTransport(args.url, os.environ.get("CAPEGO_TOKEN"))
             session = None
             try:
                 if args.command == "resume":
                     outbox = Outbox(args.outbox)
                     session = CaptureSession.resume(transport, outbox)
+                elif args.command == "replay":
+                    from .contracts import RecordingSpec
+                    source = Store(args.source_root)
+                    original = source.require_complete(args.recording_id)
+                    spec = RecordingSpec.model_validate(original["spec"]).model_copy(update={"id": f"replay-{uuid.uuid4().hex}", "origin": "replay"})
+                    outbox = Outbox(args.outbox)
+                    session = CaptureSession(spec, transport, outbox)
+                    session.record(replay_packets(source, args.recording_id, spec.id), realtime=not args.fast,
+                                   duration_ns=original["end"]["ended_at_ns"])
                 else:
                     if not 0 < args.seconds <= 86400:
                         raise ValueError("seconds must be in (0, 86400]")

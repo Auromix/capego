@@ -13,7 +13,7 @@ Requires Python 3.11+. Run in two terminals:
 ```bash
 python3 -m venv .venv
 source .venv/bin/activate
-pip install -e '.[dev]'
+pip install -e '.[dev,export]'
 capego serve --root runtime/pc
 # Another terminal, using the same virtual environment:
 capego simulate --seconds 5
@@ -45,6 +45,8 @@ python scripts/validate_egowam.py --upstream runtime/EgoWAM \
 ```
 
 This uses EgoWAM's actual Human transforms and HPTModel joint world/action loss with a small configuration and pooled RGB features, without robot data or downloaded pretrained weights. It verifies data use, **not** released-model performance. See [workbench/processing boundaries](design/system/workbench-v1.md).
+
+Local Qwen2.5-VL-3B inference has also run on macOS MPS with synthetic frames. Its constrained semantic proposals require human review; real object tracking and metric geometry estimation are still pending. [Validation evidence](design/validation/2026-09-24-software.md) · [Ubuntu/GPU/model setup](design/validation/ubuntu-runbook.md).
 
 LAN deployment: set the same `CAPEGO_TOKEN` environment variable on receiver and capture process, then run `capego serve --host 0.0.0.0 --allowed-host PC_LAN_IP` and `capego simulate --url http://PC_LAN_IP:8765`. Use only a trusted LAN or a TLS reverse proxy; do not commit tokens. `capego doctor` reports environment readiness without printing credentials.
 

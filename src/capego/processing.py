@@ -112,10 +112,16 @@ def synthetic_geometry(times):
                                 wrist[2] + .003*math.sin(seconds+finger)] for finger in range(5) for joint in range(1, 5)]
             hands[side] = {"wrist_pose": wrist + [1., 0., 0., 0.], "wrist_valid": True,
                            "joints": joints, "joint_valid": [True]*21, "confidence": 1.0}
-        frames.append({"timestamp_ns": t, "camera_pose": [0., 0., 0., 1., 0., 0., 0.], "camera_valid": True, "hands": hands})
+        # The fixture's local origin is its stationary reference camera, so these
+        # two frames coincide. A real backend must apply the measured camera pose.
+        frames.append({"timestamp_ns": t, "camera_pose": [0., 0., 0., 1., 0., 0., 0.], "camera_valid": True,
+                       "hands": hands, "hands_camera": copy.deepcopy(hands)})
     return {"status": "synthetic", "frame": "recording_local", "reference_camera": "left_rgb",
             "axes": "x_right_y_down_z_forward", "length_unit": "m", "quaternion_order": "wxyz",
             "pose_direction": "local_from_body", "provider": "synthetic-fixture-v1", "frames": frames,
+            "hand_reference": "wrist", "joint_names": ["wrist", "thumb_cmc", "thumb_mcp", "thumb_ip", "thumb_tip",
+                "index_mcp", "index_pip", "index_dip", "index_tip", "middle_mcp", "middle_pip", "middle_dip", "middle_tip",
+                "ring_mcp", "ring_pip", "ring_dip", "ring_tip", "little_mcp", "little_pip", "little_dip", "little_tip"],
             "note": "Synthetic numerical fixtures, not measurements or a hand-estimation model"}
 
 
@@ -159,6 +165,7 @@ class Processor:
             times = [r["timestamp_ns"] for r in rows if rgb_ids and r["stream_id"] == rgb_ids[0]]
             geometry = {"status": "missing", "provider": None, "frames": [], "reason": "No metric geometry backend configured"}
             backend = job["config"]["backend"]
+            provenance = {"backend": backend}
             if backend == "synthetic":
                 if rec["spec"]["origin"] != "synthetic":
                     raise ValueError("Synthetic annotations are restricted to synthetic recordings")
@@ -166,14 +173,14 @@ class Processor:
                 geometry = synthetic_geometry(times)
             elif backend == "local_vlm":
                 from .vlm import annotate_local
-                annotations = annotate_local(self.store, rec, rows, job["config"])
+                annotations, provenance = annotate_local(self.store, rec, rows, {**job["config"], "_processing_id": jid})
             else:
                 annotations = AnnotationSet.model_validate({"tasks": [{"id": "task-1", "start_ns": 0, "end_ns": duration,
                     "description": "待检查：尚未运行语义标注模型", "needs_review": True}], "operations": [], "objects": []})
             annotations.validate_duration(duration, rgb_ids)
             result = {"schema_version": 1, "id": jid, "recording_id": rec["id"], "created_at": utc_now(),
                       "source_sha256": rec["end"]["content_sha256"], "origin": rec["spec"]["origin"],
-                      "backend": backend, "quality": quality, "annotations": annotations.model_dump(), "geometry": geometry}
+                      "backend": backend, "provenance": provenance, "quality": quality, "annotations": annotations.model_dump(), "geometry": geometry}
             body = canonical(result)
             atomic_write(self.store.root / "processing" / jid / "result.json", body)
             with self.store.connection(write=True) as db:
@@ -214,6 +221,13 @@ def effective_annotations(store, jid):
 
 
 def save_review(store, jid, patch: ReviewPatch):
+    # Serialize all edits to this store while validating the resulting hierarchy.
+    # A concurrent parent/child edit must not invalidate an already checked snapshot.
+    with store.connection(write=True) as db:
+        return _save_review_locked(store, jid, patch, db)
+
+
+def _save_review_locked(store, jid, patch, db):
     annotations = effective_annotations(store, jid)
     span = next((s for s in [*annotations["tasks"], *annotations["operations"]] if s["id"] == patch.segment_id), None)
     if not span:
@@ -229,17 +243,16 @@ def save_review(store, jid, patch: ReviewPatch):
         AnnotationSet.model_validate(candidate).validate_duration(rec["end"]["ended_at_ns"], [s["id"] for s in rec["spec"]["streams"] if s["kind"] == "rgb"])
     except ValueError as exc:
         raise StoreError("invalid_annotation", str(exc), 422) from exc
-    with store.connection(write=True) as db:
-        revision = db.execute("SELECT COALESCE(MAX(revision),0) FROM reviews WHERE processing_id=? AND segment_id=?", (jid, patch.segment_id)).fetchone()[0]
-        if revision != patch.expected_revision:
-            raise StoreError("revision_conflict", "Review changed; refresh before saving")
-        body = patch.model_dump()
-        # Every revision stores effective fields, so changing only the decision never
-        # silently reverts an earlier description or interval correction.
-        for key in ("description", "start_ns", "end_ns"):
-            if body[key] is None:
-                body[key] = span[key]
-        db.execute("INSERT INTO reviews VALUES (?,?,?,?,?)", (jid, patch.segment_id, revision+1, canonical(body).decode(), utc_now()))
+    revision = db.execute("SELECT COALESCE(MAX(revision),0) FROM reviews WHERE processing_id=? AND segment_id=?", (jid, patch.segment_id)).fetchone()[0]
+    if revision != patch.expected_revision:
+        raise StoreError("revision_conflict", "Review changed; refresh before saving")
+    body = patch.model_dump()
+    # Every revision stores effective fields, so changing only the decision never
+    # silently reverts an earlier description or interval correction.
+    for key in ("description", "start_ns", "end_ns"):
+        if body[key] is None:
+            body[key] = span[key]
+    db.execute("INSERT INTO reviews VALUES (?,?,?,?,?)", (jid, patch.segment_id, revision+1, canonical(body).decode(), utc_now()))
     return {"processing_id": jid, "segment_id": patch.segment_id, "revision": revision+1, "decision": patch.decision}
 
 

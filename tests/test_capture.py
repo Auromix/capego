@@ -6,7 +6,7 @@ from fastapi.testclient import TestClient
 
 from capego.api import create_app
 from capego.capture import CaptureSession, Outbox, Unavailable
-from capego.contracts import EndRecording, sequence_digest
+from capego.contracts import EndRecording, PacketAck, sequence_digest
 from capego.sources import synthetic_packets, synthetic_spec
 from capego.storage import Store, StoreError
 
@@ -53,10 +53,21 @@ def freeze(packets, reason="user", ended_at_ns=1_000_000_000):
 
 def test_continuous_receive_and_cache_release_before_end(tmp_path):
     spec, store, transport, outbox, session = setup_capture(tmp_path)
-    producer = threading.Thread(target=lambda: session.record(synthetic_packets(spec, 1), duration_ns=1_000_000_000))
+    release_source = threading.Event()
+    source_held = threading.Event()
+
+    def source():
+        for index, packet in enumerate(synthetic_packets(spec, 1)):
+            yield packet
+            if index == 4:
+                source_held.set()
+                assert release_source.wait(20), "Test must release the unfinished source"
+
+    producer = threading.Thread(target=lambda: session.record(source(), realtime=False, duration_ns=1_000_000_000))
     producer.start()
-    deadline = time.monotonic() + 3
+    deadline = time.monotonic() + 15
     try:
+        assert source_held.wait(10)
         while time.monotonic() < deadline:
             if outbox.stats()["produced"] >= 5 and outbox.stats()["pending"] == 0:
                 break
@@ -66,13 +77,15 @@ def test_continuous_receive_and_cache_release_before_end(tmp_path):
         assert rec["count"] >= 5
         assert outbox.stats()["cache_bytes"] == 0
         assert producer.is_alive(), "Data must arrive while acquisition is still running"
-        producer.join(4)
-        assert session.wait_saved(4)
+        release_source.set()
+        producer.join(15)
+        assert session.wait_saved(15)
         assert store.require_complete(spec.id)["count"] == 30
         assert len(list((store.root / "recordings" / spec.id / "chunks").iterdir())) == 5
     finally:
+        release_source.set()
         session.close()
-        producer.join(4)
+        producer.join(15)
 
 
 def test_disconnect_lost_ack_and_resume_do_not_duplicate(tmp_path):
@@ -175,3 +188,26 @@ def test_api_auth_origin_and_validation(tmp_path):
         response = client.put("/api/v1/recordings/api/packets/0", headers=headers, json=packet.model_dump())
         assert response.json()["durable"] is True
         assert client.get("/api/v1/recordings/api/frames/0", headers=headers).headers["content-type"] == "image/jpeg"
+
+
+def test_wrong_ack_cannot_release_cache_and_end_keeps_last_sample(tmp_path):
+    spec, store, transport, outbox, session = setup_capture(tmp_path)
+    packet = next(synthetic_packets(spec, .1))
+    outbox.put(packet)
+    with pytest.raises(StoreError, match="exact packet"):
+        outbox.acknowledge(packet, PacketAck(recording_id=spec.id, sequence=packet.sequence, sha256="0"*64))
+    assert outbox.stats()["pending"] == 1
+    end = outbox.freeze("user")
+    assert end.ended_at_ns > packet.timestamp_ns
+
+
+def test_metadata_tampering_blocks_completion(tmp_path):
+    spec = synthetic_spec("metadata", width=64, height=48)
+    store = Store(tmp_path, min_free_bytes=0)
+    store.create(spec)
+    packets = list(synthetic_packets(spec, .1))
+    for p in packets:
+        store.receive(p)
+    store.end(spec.id, freeze(packets))
+    (tmp_path / "recordings" / spec.id / "recording.json").write_text("{}")
+    assert store.verify(spec.id)["status"] == "integrity_failed"
