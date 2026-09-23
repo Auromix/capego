@@ -20,19 +20,19 @@ from .storage import StoreError, atomic_write, safe_id
 class SemanticOperation(Contract):
     start_s: float = Field(ge=0)
     end_s: float = Field(gt=0)
-    description: str = Field(min_length=1, max_length=2000)
+    description: str = Field(min_length=1, max_length=300)
     hands: list[Literal["left", "right"]] = Field(min_length=1, max_length=2)
 
 
 class SemanticTask(Contract):
     start_s: float = Field(ge=0)
     end_s: float = Field(gt=0)
-    description: str = Field(min_length=1, max_length=2000)
-    operations: list[SemanticOperation] = Field(default_factory=list)
+    description: str = Field(min_length=1, max_length=300)
+    operations: list[SemanticOperation] = Field(default_factory=list, max_length=4)
 
 
 class SemanticResponse(Contract):
-    tasks: list[SemanticTask] = Field(min_length=1, max_length=16)
+    tasks: list[SemanticTask] = Field(min_length=1, max_length=2)
 
 
 def semantic_annotations(raw, duration, views):
@@ -99,7 +99,8 @@ def annotate_local(store, rec, rows, config):
     prefix = build_transformers_prefix_allowed_tokens_fn(processor.tokenizer, JsonSchemaParser(SemanticResponse.model_json_schema()))
     started = time.monotonic()
     with torch.inference_mode():
-        output = network.generate(**inputs, max_new_tokens=1536, max_time=300, do_sample=False, prefix_allowed_tokens_fn=prefix)
+        output = network.generate(**inputs, max_new_tokens=1024, max_time=300, do_sample=False,
+                                  repetition_penalty=1.08, prefix_allowed_tokens_fn=prefix)
     raw = processor.batch_decode(output[:, inputs["input_ids"].shape[1]:], skip_special_tokens=True)[0].strip()
     if raw.startswith("```"):
         raw = raw.split("\n", 1)[1].rsplit("```", 1)[0].strip()
@@ -113,7 +114,7 @@ def annotate_local(store, rec, rows, config):
     provenance = {"adapter": "qwen2.5-vl-semantic-v1", "device": device, "torch": torch.__version__,
                   "model_config_sha256": sha256((model / "config.json").read_bytes()),
                   "sampled_timestamps_ns": [r["timestamp_ns"] for r in selected], "response_sha256": sha256(raw.encode()),
-                  "generation_seconds": time.monotonic()-started, "max_new_tokens": 1536,
+                  "generation_seconds": time.monotonic()-started, "max_new_tokens": 1024,
                   "decoding": "JSON schema constrained; temporal bounds separately validated",
                   "object_tracking": "not_run", "geometry": "not_run", "normalized_output_sha256": sha256(canonical(result.model_dump()))}
     return result, provenance

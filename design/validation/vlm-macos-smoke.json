@@ -1,0 +1,29 @@
+{
+  "status": "passed",
+  "scope": "Offline inference and schema validation on synthetic frames; annotation accuracy not validated",
+  "model": "Qwen/Qwen2.5-VL-3B-Instruct",
+  "model_revision": "66285546d2b821cf421d4f5eb2576359d3770cd3",
+  "origin": "synthetic",
+  "provenance": {
+    "adapter": "qwen2.5-vl-semantic-v1",
+    "decoding": "JSON schema constrained; temporal bounds separately validated",
+    "device": "mps",
+    "generation_seconds": 48.421719582984224,
+    "geometry": "not_run",
+    "max_new_tokens": 1024,
+    "model_config_sha256": "7ed3eed5be6924cc800e8a5e53fc405c1aab1aaf36bad65c33403b36c56827f5",
+    "normalized_output_sha256": "1c0483c1b6945545f79130c1c9c1965916ba017486a2fc0059e62fa07978be75",
+    "object_tracking": "not_run",
+    "response_sha256": "a4f684d363eb592fa7f0a715388424c08824563776cdf77372f810667032b531",
+    "sampled_timestamps_ns": [
+      0,
+      600000000,
+      1200000000,
+      1900000000
+    ],
+    "torch": "2.14.0"
+  },
+  "task_count": 1,
+  "operation_count": 2,
+  "all_require_review": true
+}
