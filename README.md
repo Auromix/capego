@@ -4,7 +4,22 @@
 
 **开源第一视角采集与数据集工具链。**
 
-> **Status: design stage / 设计阶段。** This repository contains product scope and agreed system and data-processing designs. It does not yet provide working hardware, recording software, annotation tools, or verified training integrations.
+> **Status: software prototype / 软件原型。** Continuous capture/transfer, durable PC storage and recovery can run with synthetic RGB/IMU on macOS and Linux. Physical hardware, hardware synchronization and real-model training integration are not yet validated.
+
+## Run the prototype / 运行原型
+
+Requires Python 3.11+. Run in two terminals:
+
+```bash
+python3 -m venv .venv
+source .venv/bin/activate
+pip install -e '.[dev]'
+capego serve --root runtime/pc
+# Another terminal, using the same virtual environment:
+capego simulate --seconds 5
+```
+
+The receiver saves packets while capture is running. `capego resume runtime/device/<id>.sqlite3` drains an interrupted outbox. `capego verify <id>` checks PC completeness. `pytest -q` runs fault/recovery tests. See [the implemented protocol](design/system/protocol-v1.md). Runtime data is excluded from Git.
 
 CapEgo is being designed for open-source developers and researchers, starting with a reproducible reference setup for one person performing tabletop hand operations. During recording, the capture device continuously transfers data to another PC running Ubuntu 24.04 on the same LAN, where it is saved to disk. Users explicitly start batch post-processing; automatic annotation, human review, and versioned dataset production then take place locally. Exported datasets must be validated against named open-source WAM training repositories and versions before compatibility is claimed.
 
