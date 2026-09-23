@@ -14,6 +14,28 @@ jobs:
       - uses: actions/setup-python@v5
         with:
           python-version: ${{ matrix.python }}
-      - run: python -m pip install -e '.[dev]'
-      - run: ruff check src tests
+      - run: python -m pip install -e '.[dev,export]'
+      - run: ruff check src tests scripts
       - run: pytest -q
+      - run: python scripts/demo_pipeline.py --root runtime/ci-demo --egowam
+  upstream-ego-training:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 25
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - uses: actions/checkout@v4
+        with:
+          repository: GaTech-RL2/EgoWAM
+          ref: c87617fe37a6ed6a951e6b176ad552200c425c93
+          path: runtime/EgoWAM
+      - run: python -m pip install torch torchvision --index-url https://download.pytorch.org/whl/cpu
+      - run: python -m pip install -e '.[training]' -r requirements-upstream-smoke.txt
+      - run: python scripts/demo_pipeline.py --root runtime/ci-demo --egowam
+      - run: python scripts/validate_egowam.py --upstream runtime/EgoWAM --demo-report runtime/ci-demo/demo-report.json --output runtime/validation/egowam-ubuntu.json
+      - uses: actions/upload-artifact@v4
+        with:
+          name: egowam-ubuntu-smoke
+          path: runtime/validation/egowam-ubuntu.json

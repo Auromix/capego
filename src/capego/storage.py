@@ -221,7 +221,8 @@ class Store:
                 db.execute("INSERT INTO packets VALUES (?,?,?,?,?,?,?)", (
                     packet.recording_id, packet.sequence, packet.timestamp_ns, packet.stream_id,
                     digest, str(path.relative_to(self.root)), len(encoded)))
-        if self.recording(packet.recording_id)["end"]:
+        current = self.recording(packet.recording_id)
+        if current["end"] and current["count"] >= current["end"]["packet_count"]:
             self.verify(packet.recording_id)
         return PacketAck(recording_id=packet.recording_id, sequence=packet.sequence, sha256=digest)
 

@@ -9,9 +9,21 @@ from pathlib import Path
 from fastapi import FastAPI, Query, Request
 from fastapi.exceptions import RequestValidationError
 from fastapi.responses import FileResponse, JSONResponse, Response
+from fastapi.staticfiles import StaticFiles
 from starlette.middleware.trustedhost import TrustedHostMiddleware
 
-from .contracts import EndRecording, Packet, RecordingSpec
+from .contracts import (
+    BatchRequest,
+    DatasetRequest,
+    EndRecording,
+    ExportRequest,
+    Packet,
+    RecordingSpec,
+    ReviewPatch,
+)
+from .datasets import create_dataset, get_dataset, list_datasets
+from .exporting import export_dataset, read_export
+from .processing import Processor, effective_annotations, list_jobs, read_result, save_review
 from .storage import Store, StoreError
 
 
@@ -26,6 +38,8 @@ def create_app(root: str | Path, token: str | None = None, allowed_hosts=None) -
 
     app = FastAPI(title="CapEgo", version="0.1.0", lifespan=lifespan)
     app.state.store = store
+    app.state.processor = Processor(store)
+    app.mount("/static", StaticFiles(directory=Path(__file__).parent / "static"), name="static")
     app.add_middleware(TrustedHostMiddleware, allowed_hosts=allowed_hosts or ["localhost", "127.0.0.1", "[::1]", "testserver"])
 
     @app.middleware("http")
@@ -36,8 +50,20 @@ def create_app(root: str | Path, token: str | None = None, allowed_hosts=None) -
             origin = request.headers.get("origin")
             if origin and origin != f"{request.url.scheme}://{request.headers.get('host')}":
                 return JSONResponse({"error": {"code": "origin_rejected", "message": "Cross-origin API access is disabled"}}, status_code=403)
-            if int(request.headers.get("content-length", "0")) > 16 * 1024**2:
+            try:
+                length = int(request.headers.get("content-length", "0"))
+            except ValueError:
+                return JSONResponse({"error": {"code": "invalid_length", "message": "Invalid content length"}}, status_code=400)
+            if length > 16 * 1024**2:
                 return JSONResponse({"error": {"code": "body_too_large", "message": "Packet exceeds receiver limit"}}, status_code=413)
+            if request.method in {"POST", "PUT", "PATCH"}:
+                chunks, size = [], 0
+                async for chunk in request.stream():
+                    size += len(chunk)
+                    if size > 16 * 1024**2:
+                        return JSONResponse({"error": {"code": "body_too_large", "message": "Packet exceeds receiver limit"}}, status_code=413)
+                    chunks.append(chunk)
+                request._body = b"".join(chunks)
         response = await call_next(request)
         response.headers["X-Content-Type-Options"] = "nosniff"
         response.headers["Cache-Control"] = "no-store"
@@ -111,5 +137,56 @@ def create_app(root: str | Path, token: str | None = None, allowed_hosts=None) -
         if not path.is_file():
             return {"service": "CapEgo", "docs": "/docs"}
         return FileResponse(path)
+
+    @app.post("/api/v1/processing", status_code=202)
+    def process(request: BatchRequest):
+        return app.state.processor.submit(request)
+
+    @app.get("/api/v1/processing")
+    def jobs(limit: int = Query(100, ge=1, le=1000), offset: int = Query(0, ge=0)):
+        return list_jobs(store, limit, offset)
+
+    @app.get("/api/v1/processing/{processing_id}")
+    def job(processing_id: str):
+        return read_result(store, processing_id)
+
+    @app.get("/api/v1/processing/{processing_id}/annotations")
+    def annotations(processing_id: str):
+        return effective_annotations(store, processing_id)
+
+    @app.post("/api/v1/processing/{processing_id}/reviews")
+    def review(processing_id: str, patch: ReviewPatch):
+        return save_review(store, processing_id, patch)
+
+    @app.post("/api/v1/datasets", status_code=201)
+    def dataset_create(request: DatasetRequest):
+        return create_dataset(store, request)
+
+    @app.get("/api/v1/datasets")
+    def datasets(limit: int = Query(100, ge=1, le=1000), offset: int = Query(0, ge=0)):
+        return list_datasets(store, limit, offset)
+
+    @app.get("/api/v1/datasets/{dataset_id}")
+    def dataset(dataset_id: str):
+        return get_dataset(store, dataset_id)
+
+    @app.post("/api/v1/datasets/{dataset_id}/exports", status_code=201)
+    def export(dataset_id: str, request: ExportRequest):
+        return export_dataset(store, dataset_id, request)
+
+    @app.get("/api/v1/exports/{export_id}")
+    def export_report(export_id: str):
+        return read_export(store, export_id)
+
+    @app.get("/api/v1/exports/{export_id}/files/{filename:path}")
+    def export_file(export_id: str, filename: str):
+        report = read_export(store, export_id)
+        if filename not in report["content_files"]:
+            raise StoreError("not_found", "Export file not in manifest", 404)
+        from .contracts import sha256
+        path = store.root / "exports" / export_id / filename
+        if not path.is_file() or sha256(path.read_bytes()) != report["content_files"][filename]:
+            raise StoreError("export_corrupt", "Export file integrity failed")
+        return FileResponse(path, filename=path.name)
 
     return app

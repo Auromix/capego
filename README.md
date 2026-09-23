@@ -4,7 +4,7 @@
 
 **开源第一视角采集与数据集工具链。**
 
-> **Status: software prototype / 软件原型。** Continuous capture/transfer, durable PC storage and recovery can run with synthetic RGB/IMU on macOS and Linux. Physical hardware, hardware synchronization and real-model training integration are not yet validated.
+> **Status: software prototype / 软件原型。** Continuous capture, durable PC storage, explicit processing, review, dataset snapshots and export run without physical hardware. Synthetic ego data has passed the unmodified EgoWAM Human loader and a reduced HPT world/action training smoke test on macOS CPU. Physical sensors, metric hand reconstruction, released model recipes and NVIDIA GPU operation remain separate validation items.
 
 ## Run the prototype / 运行原型
 
@@ -20,6 +20,33 @@ capego simulate --seconds 5
 ```
 
 The receiver saves packets while capture is running. `capego resume runtime/device/<id>.sqlite3` drains an interrupted outbox. `capego verify <id>` checks PC completeness. `pytest -q` runs fault/recovery tests. See [the implemented protocol](design/system/protocol-v1.md). Runtime data is excluded from Git.
+
+Open **http://localhost:8765** for the offline workbench. Select completed recordings, explicitly start processing, review annotations, save a named dataset and export. `synthetic` processing is a test fixture restricted to synthetic recordings; `quality` performs basic data checks; `local_vlm` requires a separately provisioned local model. Missing geometry is never filled by human approval.
+
+```bash
+# One-command HTTP pipeline test (starts and stops its own receiver)
+pip install -e '.[dev,export]'
+python scripts/demo_pipeline.py --root runtime/demo --egowam
+
+# Independent processing; receiver need not be running
+capego process RECORDING_ID --backend synthetic
+capego dataset 'Tabletop v1' PROCESSING_ID:task-1
+capego export DATASET_ID --format egowam
+```
+
+For target-loader and actual loss/backprop validation:
+
+```bash
+pip install -e '.[training]' -r requirements-upstream-smoke.txt
+git clone https://github.com/GaTech-RL2/EgoWAM.git runtime/EgoWAM
+git -C runtime/EgoWAM checkout c87617fe37a6ed6a951e6b176ad552200c425c93
+python scripts/validate_egowam.py --upstream runtime/EgoWAM \
+  --demo-report runtime/demo/demo-report.json --output runtime/validation/egowam.json
+```
+
+This uses EgoWAM's actual Human transforms and HPTModel joint world/action loss with a small configuration and pooled RGB features, without robot data or downloaded pretrained weights. It verifies data use, **not** released-model performance. See [workbench/processing boundaries](design/system/workbench-v1.md).
+
+LAN deployment: set the same `CAPEGO_TOKEN` environment variable on receiver and capture process, then run `capego serve --host 0.0.0.0 --allowed-host PC_LAN_IP` and `capego simulate --url http://PC_LAN_IP:8765`. Use only a trusted LAN or a TLS reverse proxy; do not commit tokens. `capego doctor` reports environment readiness without printing credentials.
 
 CapEgo is being designed for open-source developers and researchers, starting with a reproducible reference setup for one person performing tabletop hand operations. During recording, the capture device continuously transfers data to another PC running Ubuntu 24.04 on the same LAN, where it is saved to disk. Users explicitly start batch post-processing; automatic annotation, human review, and versioned dataset production then take place locally. Exported datasets must be validated against named open-source WAM training repositories and versions before compatibility is claimed.
 
@@ -39,7 +66,7 @@ CapEgo is being designed for open-source developers and researchers, starting wi
 
 录制期间边采边传，PC 持续落盘；设备缓存只暂存尚未获得 PC 可靠保存确认的数据，并随确认持续释放。录制途中局域网中断时保留待确认数据，恢复后自动补传。缓存耗尽属于异常，直接结束本次录制、不自动续录，保留已有数据并继续完成传输。
 
-结构化双手动作的数据含义、有效性和训练映射都需要明确。具体文件格式和适配器将按目标训练入口定义；当前尚未完成训练兼容性验证。
+结构化双手动作采用显式有效性与来源标记。当前 EgoWAM 适配已通过模拟数据的缩小配置训练验证；真实三维手部结果和目标发布版训练配置仍待验证。
 
 ## Start here / 从这里开始
 
@@ -58,7 +85,7 @@ CapEgo is being designed for open-source developers and researchers, starting wi
 
 先讨论使用者、任务、交付结果和产品边界，再确定软硬件架构、接口、选型和验证方法。`design/` 内的 Markdown 是设计来源；已确认范围、候选方案、实现、测试和验收分别表述。
 
-参考部署和主要数据行为已确认。相机组合、安装细节、采集端计算平台、同步机制、传输协议、存储格式、具体标注模型、GPU 配置和目标训练版本仍待设计。客户提供的性能指标是需求输入，不是已实现或已承诺的能力。
+参考部署和主要数据行为已确认。HTTP/SQLite/JSON 原型协议、HDF5 导出和具名 EgoWAM 适配已实现；相机、安装、采集计算平台、硬同步、生产视频编码、真实几何模型和 GPU 配置仍待验证。客户提供的性能指标是需求输入，不是已实现或已承诺的能力。
 
 ## Open-source scope and licensing / 开源范围与许可
 

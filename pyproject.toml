@@ -16,7 +16,9 @@ dependencies = [
 
 [project.optional-dependencies]
 dev = ["pytest>=8,<10", "ruff>=0.9,<1"]
-training = ["torch>=2.6,<3", "zarr>=2.18,<3"]
+export = ["zarr==3.1.5"]
+training = ["torch>=2.5,<3", "zarr==3.1.5", "simplejpeg", "pandas", "scipy", "boto3", "cloudpathlib", "sqlalchemy", "einops", "loguru", "matplotlib", "overrides"]
+vlm = ["torch", "transformers>=4.57,<5", "accelerate"]
 
 [project.scripts]
 capego = "capego.cli:main"

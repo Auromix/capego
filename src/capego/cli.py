@@ -46,13 +46,70 @@ def parser():
     verify = sub.add_parser("verify")
     verify.add_argument("recording_id")
     verify.add_argument("--root", default="runtime/pc")
+    process = sub.add_parser("process", help="Explicitly process completed recordings (receiver may be stopped)")
+    process.add_argument("recording_ids", nargs="+")
+    process.add_argument("--root", default="runtime/pc")
+    process.add_argument("--backend", choices=["quality", "synthetic", "local_vlm"], default="quality")
+    process.add_argument("--model-path", default=None)
+    process.add_argument("--hint", default="")
+    process.add_argument("--wait", type=float, default=3600)
+    dataset = sub.add_parser("dataset", help="Freeze named dataset with proc-id:segment-id selections")
+    dataset.add_argument("name")
+    dataset.add_argument("selections", nargs="+")
+    dataset.add_argument("--root", default="runtime/pc")
+    export = sub.add_parser("export")
+    export.add_argument("dataset_id")
+    export.add_argument("--root", default="runtime/pc")
+    export.add_argument("--format", choices=["hdf5", "egowam"], default="hdf5")
+    export.add_argument("--fps", type=float, default=10)
+    sub.add_parser("doctor", help="Report local environment without printing credentials")
     return p
 
 
 def main(argv=None):
     args = parser().parse_args(argv)
     try:
-        if args.command == "serve":
+        if args.command == "doctor":
+            import platform
+            import shutil
+            result = {"python": platform.python_version(), "platform": platform.platform(),
+                      "receiver_default": "127.0.0.1:8765", "disk_free_bytes": shutil.disk_usage(Path.cwd()).free,
+                      "token_configured": bool(os.environ.get("CAPEGO_TOKEN"))}
+            try:
+                import torch
+                result["torch"] = torch.__version__
+                result["cuda_available"] = torch.cuda.is_available()
+                result["mps_available"] = torch.backends.mps.is_available()
+                if torch.cuda.is_available():
+                    result["gpu"] = torch.cuda.get_device_name(0)
+                    result["vram_bytes"] = torch.cuda.get_device_properties(0).total_memory
+            except ImportError:
+                result["torch"] = "not installed"
+            emit(result)
+        elif args.command == "process":
+            from .contracts import BatchRequest
+            from .processing import Processor
+            processor = Processor(Store(args.root))
+            try:
+                batch = processor.submit(BatchRequest(recording_ids=args.recording_ids, backend=args.backend, hint=args.hint, model_path=args.model_path))
+                jobs = [processor.wait(j["id"], args.wait) if j.get("id") else j for j in batch["jobs"]]
+                emit({"batch_id": batch["batch_id"], "jobs": [{k: j.get(k) for k in ("id", "recording_id", "status", "error")} for j in jobs]})
+                return 0 if all(j["status"] == "succeeded" for j in jobs) else 1
+            finally:
+                processor.close()
+        elif args.command == "dataset":
+            from .contracts import DatasetRequest
+            from .datasets import create_dataset
+            selections = {}
+            for text in args.selections:
+                pid, sid = text.split(":", 1)
+                selections.setdefault(pid, []).append(sid)
+            emit(create_dataset(Store(args.root), DatasetRequest(name=args.name, selections=[{"processing_id": pid, "segment_ids": sids} for pid, sids in selections.items()])))
+        elif args.command == "export":
+            from .contracts import ExportRequest
+            from .exporting import export_dataset
+            emit(export_dataset(Store(args.root), args.dataset_id, ExportRequest(format=args.format, fps=args.fps)))
+        elif args.command == "serve":
             import uvicorn
 
             from .api import create_app
