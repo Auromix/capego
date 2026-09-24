@@ -1,0 +1,47 @@
+{
+  "status": "passed",
+  "upstream_commit": "c87617fe37a6ed6a951e6b176ad552200c425c93",
+  "target": "EgoWAM HPTModel joint world/action loss",
+  "scope": "reduced configuration smoke test; not released weights or full training recipe",
+  "device": "cpu",
+  "torch": "2.14.0",
+  "source_origins": [
+    "dataset"
+  ],
+  "dataset_sha256": "fb30ab41ba897e1d7fb386446b5aee62aade840fc88daf4c872ccf99ccf05243",
+  "batch_size": 8,
+  "action_shape": [
+    8,
+    4,
+    12
+  ],
+  "future_rgb_shape": [
+    8,
+    1,
+    192
+  ],
+  "losses": [
+    {
+      "total": 1.2235841751098633,
+      "action": 0.7787315249443054,
+      "future_rgb": 0.44485270977020264
+    },
+    {
+      "total": 0.9100251793861389,
+      "action": 0.6317288875579834,
+      "future_rgb": 0.2782962918281555
+    },
+    {
+      "total": 0.7476880550384521,
+      "action": 0.5691125392913818,
+      "future_rgb": 0.1785755306482315
+    }
+  ],
+  "updated_parameter_tensors": {
+    "trunk": 14,
+    "action_head": 27,
+    "world_head": 26
+  },
+  "robot_samples": 0,
+  "parameters": 60780
+}

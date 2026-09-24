@@ -1,0 +1,42 @@
+{
+  "status": "contract_passed_quality_not_accepted",
+  "sample": "test/add_remove_lid/0",
+  "processing_id": "proc-59b33b384d6f46afb3a80cad9584bf48",
+  "model": "Qwen2.5-VL-3B-Instruct",
+  "model_revision": "66285546d2b821cf421d4f5eb2576359d3770cd3",
+  "provenance": {
+    "adapter": "qwen2.5-vl-semantic-v1",
+    "boundary_method": "model proposals constrained to sampled frame times and recording end; coarse timing",
+    "decoding": "JSON schema constrained; temporal bounds separately validated",
+    "device": "mps",
+    "generated_tokens": 240,
+    "generation_seconds": 26.727311291964725,
+    "geometry": "not_run",
+    "image_max_pixels": 100352,
+    "max_new_tokens": 1024,
+    "max_time_seconds": 300,
+    "model_config_sha256": "7ed3eed5be6924cc800e8a5e53fc405c1aab1aaf36bad65c33403b36c56827f5",
+    "normalized_output_sha256": "11ad60584905489406aefe8332969f951f990ee0bb0695f7b3a568ba96dc7994",
+    "object_tracking": "not_run",
+    "raw_response_sha256": "d251efc81abc17cf9573a3cef02db5ff620eefa923635afa477877a5c756f313",
+    "response_sha256": "d251efc81abc17cf9573a3cef02db5ff620eefa923635afa477877a5c756f313",
+    "sampled_timestamps_ns": [
+      0,
+      1033333333,
+      2066666667,
+      3100000000
+    ],
+    "torch": "2.14.0"
+  },
+  "tasks": 2,
+  "operations": 2,
+  "all_require_review": true,
+  "covered_until_ns": 2066666667,
+  "recording_duration_ns": 3133333333,
+  "visual_review": "Proposals omit the lid-removal action and the final interval; hand-role descriptions need review. No semantic acceptance.",
+  "previous_failure": {
+    "processing_id": "proc-27247209221b4c509a2f02dcdbb1cb54",
+    "reason": "Out-of-range and empty time intervals rejected; no synthetic fallback."
+  },
+  "change": "Constrain boundaries to sampled timestamps and recording end; require temporal validation; persist diagnostics."
+}

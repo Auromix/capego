@@ -1,0 +1,40 @@
+{
+  "source_url": "https://ml-site.cdn-apple.com/datasets/egodex/test.zip",
+  "archive_etag": "\"05247067ba3bb80f61086e7c3ee205fe-258\"",
+  "archive_bytes": 17304529397,
+  "downloaded_bytes": 20157789,
+  "license": "CC-BY-NC-ND; see upstream terms",
+  "purpose": "local integration smoke test; no redistribution or benchmark evaluation",
+  "files": [
+    {
+      "path": "test/add_remove_lid/0.mp4",
+      "bytes": 1472629,
+      "sha256": "1a0ec11f438e100ad27d702ed098fc63f392348e6a3fb8b882f84c7751497af9"
+    },
+    {
+      "path": "test/add_remove_lid/0.hdf5",
+      "bytes": 503712,
+      "sha256": "5c5ba0cc67599470ff970bb15d4855c37324834d3a92f5fea86ead484090b420"
+    },
+    {
+      "path": "test/screw_unscrew_bottle_cap/0.mp4",
+      "bytes": 2038024,
+      "sha256": "6c71ebea52e5ff24a09c67b9c68e58d496ff60f45fdb8434c38abc2e915c9eac"
+    },
+    {
+      "path": "test/screw_unscrew_bottle_cap/0.hdf5",
+      "bytes": 686432,
+      "sha256": "6cbcf2b1c62413b3a197bfc27e45d340ddba0dd147ca37cf6500e7f4606ac3ec"
+    },
+    {
+      "path": "test/basic_fold/0.mp4",
+      "bytes": 14271344,
+      "sha256": "cd16698eba8753d9c95533e1737a17ef05f0223d85f4484b44e3edfc9236618b"
+    },
+    {
+      "path": "test/basic_fold/0.hdf5",
+      "bytes": 2114020,
+      "sha256": "051fbd67ebde14c4da74191eb86c8f02dc3e17df8e2d2bfa6e98bdff2edf9a26"
+    }
+  ]
+}

@@ -33,9 +33,12 @@ class Transport(Protocol):
 
 class HTTPTransport:
     def __init__(self, url: str, token: str | None = None, timeout=10):
-        self.client = httpx.Client(base_url=url.rstrip("/"), timeout=timeout,
-                                   headers={"Authorization": f"Bearer {token}"} if token else {},
-                                   trust_env=False)
+        self.client = httpx.Client(
+            base_url=url.rstrip("/"),
+            timeout=timeout,
+            headers={"Authorization": f"Bearer {token}"} if token else {},
+            trust_env=False,
+        )
 
     def request(self, method, path, body=None):
         try:
@@ -49,9 +52,11 @@ class HTTPTransport:
                 error = response.json().get("error", {})
             except ValueError:
                 error = {}
-            raise StoreError(error.get("code", "receiver_error"),
-                             error.get("message", f"Receiver rejected request ({response.status_code})"),
-                             response.status_code)
+            raise StoreError(
+                error.get("code", "receiver_error"),
+                error.get("message", f"Receiver rejected request ({response.status_code})"),
+                response.status_code,
+            )
         return response.json()
 
     def ready(self):
@@ -61,7 +66,11 @@ class HTTPTransport:
         return self.request("POST", "/api/v1/recordings", spec.model_dump())
 
     def send(self, packet):
-        value = self.request("PUT", f"/api/v1/recordings/{packet.recording_id}/packets/{packet.sequence}", packet.model_dump())
+        value = self.request(
+            "PUT",
+            f"/api/v1/recordings/{packet.recording_id}/packets/{packet.sequence}",
+            packet.model_dump(),
+        )
         return PacketAck.model_validate(value)
 
     def end(self, recording_id, end):
@@ -128,34 +137,57 @@ class Outbox:
                 raise StoreError("sequence_error", "Capture packets must be enqueued in sequence")
             if used + len(body) > self.max_bytes:
                 raise CacheFull("Temporary transport cache is full")
-            db.execute("INSERT INTO packets VALUES (?,?,?,?,?)", (packet.sequence, packet.digest(), packet.timestamp_ns, body, len(body)))
+            db.execute(
+                "INSERT INTO packets VALUES (?,?,?,?,?)",
+                (packet.sequence, packet.digest(), packet.timestamp_ns, body, len(body)),
+            )
 
     def pending(self) -> Packet | None:
         with self.connection() as db:
-            row = db.execute("SELECT body FROM packets WHERE body IS NOT NULL ORDER BY sequence LIMIT 1").fetchone()
+            row = db.execute(
+                "SELECT body FROM packets WHERE body IS NOT NULL ORDER BY sequence LIMIT 1"
+            ).fetchone()
         return Packet.model_validate_json(row[0]) if row else None
 
     def acknowledge(self, packet: Packet, ack: PacketAck):
-        if ack.recording_id != packet.recording_id or ack.sequence != packet.sequence or ack.sha256 != packet.digest() or ack.durable is not True:
+        if (
+            ack.recording_id != packet.recording_id
+            or ack.sequence != packet.sequence
+            or ack.sha256 != packet.digest()
+            or ack.durable is not True
+        ):
             raise StoreError("bad_ack", "ACK does not confirm the exact packet")
         with self.connection() as db:
-            db.execute("UPDATE packets SET body=NULL,size=0 WHERE sequence=? AND sha256=?", (packet.sequence, ack.sha256))
+            db.execute(
+                "UPDATE packets SET body=NULL,size=0 WHERE sequence=? AND sha256=?",
+                (packet.sequence, ack.sha256),
+            )
 
     def freeze(self, reason: str, ended_at_ns: int | None = None) -> EndRecording:
         previous = self.metadata("end")
         if previous:
             return EndRecording.model_validate(previous)
         with self.connection() as db:
-            rows = db.execute("SELECT sequence,sha256,timestamp_ns FROM packets ORDER BY sequence").fetchall()
+            rows = db.execute(
+                "SELECT sequence,sha256,timestamp_ns FROM packets ORDER BY sequence"
+            ).fetchall()
             last_time = max((r["timestamp_ns"] for r in rows), default=0)
-            end = EndRecording(packet_count=len(rows), content_sha256=sequence_digest([(r["sequence"], r["sha256"]) for r in rows]),
-                               ended_at_ns=max(last_time + (1 if rows else 0), ended_at_ns or 0), reason=reason)
-            db.execute("INSERT INTO metadata VALUES ('end',?)", (canonical(end.model_dump()).decode(),))
+            end = EndRecording(
+                packet_count=len(rows),
+                content_sha256=sequence_digest([(r["sequence"], r["sha256"]) for r in rows]),
+                ended_at_ns=max(last_time + (1 if rows else 0), ended_at_ns or 0),
+                reason=reason,
+            )
+            db.execute(
+                "INSERT INTO metadata VALUES ('end',?)", (canonical(end.model_dump()).decode(),)
+            )
         return end
 
     def stats(self):
         with self.connection() as db:
-            row = db.execute("SELECT COUNT(*) produced, COUNT(body) pending, COALESCE(SUM(size),0) cache_bytes FROM packets").fetchone()
+            row = db.execute(
+                "SELECT COUNT(*) produced, COUNT(body) pending, COALESCE(SUM(size),0) cache_bytes FROM packets"
+            ).fetchone()
         return dict(row)
 
 
@@ -180,7 +212,9 @@ class CaptureSession:
         self._start_sender()
 
     def _start_sender(self):
-        self.sender = threading.Thread(target=self._pump, name=f"capego-send-{self.spec.id}", daemon=True)
+        self.sender = threading.Thread(
+            target=self._pump, name=f"capego-send-{self.spec.id}", daemon=True
+        )
         self.sender.start()
 
     def _pump(self):

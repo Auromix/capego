@@ -1,12 +1,12 @@
 # 第一版可执行采集协议
 
-状态：软件原型实现；使用合成 JPEG 图像和 IMU 验证。尚未验证实体设备、高分辨率吞吐、硬同步或断电存储硬件保证。
+状态：软件原型实现；使用合成 JPEG/IMU 和真实公开 EgoDex 单目 1080p 视频回放验证。尚未验证实体设备、持续双目吞吐、硬同步或断电存储硬件保证。详见[真实数据验证](../validation/2026-09-24-real-data.md)。
 
 ## 连续接收
 
 设备先检查 PC `/api/v1/ready`，再创建 recording。每个包带全局连续序号、流 ID、原始传感器时间戳和采集相对纳秒时间戳。设备采集线程和发送线程独立运行；每产生一包就进入临时 outbox，发送线程持续取出上传。
 
-PC 在 `recordings/<id>/chunks/<时间块编号>/<序号>.json` 存包；当前封装是含 base64 JPEG/PNG 或六轴 IMU JSON 的可检查原型协议，后续可增加二进制/视频封装。分块只改变存储位置，不改变时间戳，也不是任务切分。
+PC 在 `recordings/<id>/chunks/<时间块编号>/<序号>.json` 存包；当前封装是含 base64 JPEG/PNG、六轴 IMU JSON 或带显式有效性的 tracking JSON 的可检查原型协议，后续可增加二进制/视频封装。分块只改变存储位置，不改变时间戳，也不是任务切分。
 
 PC 完成文件 fsync、目录 fsync、SQLite FULL 事务提交后返回该包摘要和 durable ACK。设备只在确认 ID、序号和摘要全部匹配后释放包体。SQLite 保留小型摘要账本；已释放页可复用，文件不会每包主动收缩。因此缓存上限指未确认包体预算，不是整个 SQLite 文件的硬物理上限。
 
@@ -26,3 +26,9 @@ PC 完成文件 fsync、目录 fsync、SQLite FULL 事务提交后返回该包�
 默认仅监听本机。绑定 LAN 地址必须设置 CAPEGO_TOKEN，明确接收端允许的 Host。Bearer 用于受信任局域网原型；需要跨不可信网络时由部署方提供 TLS，不直接暴露公网。token 只通过环境变量配置。
 
 参考命令：`capego serve --root runtime/pc`、`capego simulate --seconds 5`、`capego verify <id>`。接收后不会自动运行任何后处理。
+
+## 公开数据回放扩展
+
+协议 v1 新增 `origin=dataset`、`kind=tracking` 与 `codec=tracking_json`，用于数据源已提供的相机／双手估计。原有 RGB/IMU 数据不变；旧接收端不认识新增枚举，使用前须更新两端。每帧 tracking 要求自身时间戳与包头一致，缺失观测写 null 且 validity=false，四元数须归一化。21 关节语义和来源参考系随 calibration 保存。
+
+EgoDex 导入并不是新传感器采集；原 MP4 解码后以 JPEG 传输，提供原文件哈希，只有单目 RGB，没有 IMU。后处理通过用户显式选择 `dataset_annotations` 将归档中的来源估计整理成独立处理版本，自动到达不触发处理。

@@ -14,7 +14,9 @@ Digest = Annotated[str, Field(pattern=r"^[0-9a-f]{64}$")]
 
 
 def canonical(value: object) -> bytes:
-    return json.dumps(value, ensure_ascii=False, sort_keys=True, separators=(",", ":"), allow_nan=False).encode()
+    return json.dumps(
+        value, ensure_ascii=False, sort_keys=True, separators=(",", ":"), allow_nan=False
+    ).encode()
 
 
 def sha256(data: bytes) -> str:
@@ -31,7 +33,7 @@ class Contract(BaseModel):
 
 class Stream(Contract):
     id: Identifier
-    kind: Literal["rgb", "imu"]
+    kind: Literal["rgb", "imu", "tracking"]
     rate_hz: float = Field(gt=0, le=10000)
     width: int | None = Field(default=None, gt=0, le=8192)
     height: int | None = Field(default=None, gt=0, le=8192)
@@ -47,7 +49,7 @@ class RecordingSpec(Contract):
     schema_version: Literal[1] = 1
     id: Identifier
     device_id: Identifier
-    origin: Literal["synthetic", "replay", "sensor"]
+    origin: Literal["synthetic", "replay", "sensor", "dataset"]
     streams: list[Stream] = Field(min_length=1, max_length=16)
     chunk_duration_ns: int = Field(default=5_000_000_000, gt=0)
     started_at: str
@@ -71,7 +73,7 @@ class Packet(Contract):
     timestamp_ns: int = Field(ge=0, le=2**63 - 1)
     source_timestamp_ns: int = Field(ge=0, le=2**63 - 1)
     clock_id: Identifier = "capture_monotonic"
-    codec: Literal["jpeg", "png", "imu_json"]
+    codec: Literal["jpeg", "png", "imu_json", "tracking_json"]
     payload_b64: str = Field(max_length=12_000_000)
 
     def payload(self) -> bytes:
@@ -106,7 +108,7 @@ class PacketAck(Contract):
 
 class BatchRequest(Contract):
     recording_ids: list[Identifier] = Field(min_length=1, max_length=1000)
-    backend: Literal["quality", "synthetic", "local_vlm"] = "quality"
+    backend: Literal["quality", "synthetic", "local_vlm", "dataset_annotations"] = "quality"
     hint: str = Field(default="", max_length=2000)
     model_path: str | None = None
 

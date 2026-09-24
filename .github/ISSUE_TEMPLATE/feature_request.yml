@@ -1,0 +1,16 @@
+name: Feature proposal / 功能建议
+description: Describe a user need and a concrete outcome.
+body:
+  - type: textarea
+    id: need
+    attributes:
+      label: Who needs this, and why? / 使用者与问题
+    validations:
+      required: true
+  - type: textarea
+    id: result
+    attributes:
+      label: Proposed behavior and validation / 预期行为与验证方式
+      description: Include compatibility constraints and alternatives where relevant.
+    validations:
+      required: true

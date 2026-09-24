@@ -43,24 +43,43 @@ def parser():
     resume.add_argument("outbox")
     resume.add_argument("--url", default="http://127.0.0.1:8765")
     resume.add_argument("--wait", type=float, default=60)
-    replay = sub.add_parser("replay", help="Replay an archived recording through the same continuous transport")
+    replay = sub.add_parser(
+        "replay", help="Replay an archived recording through the same continuous transport"
+    )
     replay.add_argument("recording_id")
     replay.add_argument("--source-root", required=True)
     replay.add_argument("--url", default="http://127.0.0.1:8765")
     replay.add_argument("--outbox", required=True)
     replay.add_argument("--wait", type=float, default=60)
     replay.add_argument("--fast", action="store_true")
+    egodex = sub.add_parser(
+        "import-egodex", help="Replay a real paired EgoDex MP4/HDF5 via continuous HTTP transport"
+    )
+    egodex.add_argument("video", type=Path)
+    egodex.add_argument("--url", default="http://127.0.0.1:8765")
+    egodex.add_argument("--outbox", required=True)
+    egodex.add_argument("--wait", type=float, default=120)
+    egodex.add_argument("--fast", action="store_true")
+    egodex.add_argument("--confidence-threshold", type=float, default=0.5)
     verify = sub.add_parser("verify")
     verify.add_argument("recording_id")
     verify.add_argument("--root", default="runtime/pc")
-    process = sub.add_parser("process", help="Explicitly process completed recordings (receiver may be stopped)")
+    process = sub.add_parser(
+        "process", help="Explicitly process completed recordings (receiver may be stopped)"
+    )
     process.add_argument("recording_ids", nargs="+")
     process.add_argument("--root", default="runtime/pc")
-    process.add_argument("--backend", choices=["quality", "synthetic", "local_vlm"], default="quality")
+    process.add_argument(
+        "--backend",
+        choices=["quality", "synthetic", "local_vlm", "dataset_annotations"],
+        default="quality",
+    )
     process.add_argument("--model-path", default=None)
     process.add_argument("--hint", default="")
     process.add_argument("--wait", type=float, default=3600)
-    dataset = sub.add_parser("dataset", help="Freeze named dataset with proc-id:segment-id selections")
+    dataset = sub.add_parser(
+        "dataset", help="Freeze named dataset with proc-id:segment-id selections"
+    )
     dataset.add_argument("name")
     dataset.add_argument("selections", nargs="+")
     dataset.add_argument("--root", default="runtime/pc")
@@ -79,11 +98,17 @@ def main(argv=None):
         if args.command == "doctor":
             import platform
             import shutil
-            result = {"python": platform.python_version(), "platform": platform.platform(),
-                      "receiver_default": "127.0.0.1:8765", "disk_free_bytes": shutil.disk_usage(Path.cwd()).free,
-                      "token_configured": bool(os.environ.get("CAPEGO_TOKEN"))}
+
+            result = {
+                "python": platform.python_version(),
+                "platform": platform.platform(),
+                "receiver_default": "127.0.0.1:8765",
+                "disk_free_bytes": shutil.disk_usage(Path.cwd()).free,
+                "token_configured": bool(os.environ.get("CAPEGO_TOKEN")),
+            }
             try:
                 import torch
+
                 result["torch"] = torch.__version__
                 result["cuda_available"] = torch.cuda.is_available()
                 result["mps_available"] = torch.backends.mps.is_available()
@@ -96,71 +121,153 @@ def main(argv=None):
         elif args.command == "process":
             from .contracts import BatchRequest
             from .processing import Processor
+
             processor = Processor(Store(args.root))
             try:
-                batch = processor.submit(BatchRequest(recording_ids=args.recording_ids, backend=args.backend, hint=args.hint, model_path=args.model_path))
-                jobs = [processor.wait(j["id"], args.wait) if j.get("id") else j for j in batch["jobs"]]
-                emit({"batch_id": batch["batch_id"], "jobs": [{k: j.get(k) for k in ("id", "recording_id", "status", "error")} for j in jobs]})
+                batch = processor.submit(
+                    BatchRequest(
+                        recording_ids=args.recording_ids,
+                        backend=args.backend,
+                        hint=args.hint,
+                        model_path=args.model_path,
+                    )
+                )
+                jobs = [
+                    processor.wait(j["id"], args.wait) if j.get("id") else j for j in batch["jobs"]
+                ]
+                emit(
+                    {
+                        "batch_id": batch["batch_id"],
+                        "jobs": [
+                            {k: j.get(k) for k in ("id", "recording_id", "status", "error")}
+                            for j in jobs
+                        ],
+                    }
+                )
                 return 0 if all(j["status"] == "succeeded" for j in jobs) else 1
             finally:
                 processor.close()
         elif args.command == "dataset":
             from .contracts import DatasetRequest
             from .datasets import create_dataset
+
             selections = {}
             for text in args.selections:
                 pid, sid = text.split(":", 1)
                 selections.setdefault(pid, []).append(sid)
-            emit(create_dataset(Store(args.root), DatasetRequest(name=args.name, selections=[{"processing_id": pid, "segment_ids": sids} for pid, sids in selections.items()])))
+            emit(
+                create_dataset(
+                    Store(args.root),
+                    DatasetRequest(
+                        name=args.name,
+                        selections=[
+                            {"processing_id": pid, "segment_ids": sids}
+                            for pid, sids in selections.items()
+                        ],
+                    ),
+                )
+            )
         elif args.command == "export":
             from .contracts import ExportRequest
             from .exporting import export_dataset
-            emit(export_dataset(Store(args.root), args.dataset_id, ExportRequest(format=args.format, fps=args.fps)))
+
+            emit(
+                export_dataset(
+                    Store(args.root),
+                    args.dataset_id,
+                    ExportRequest(format=args.format, fps=args.fps),
+                )
+            )
         elif args.command == "serve":
             import uvicorn
 
             from .api import create_app
+
             token = os.environ.get("CAPEGO_TOKEN")
             if args.host not in {"127.0.0.1", "localhost", "::1"} and not token:
-                raise ValueError("LAN binding requires CAPEGO_TOKEN and explicit --allowed-host PC_IP")
+                raise ValueError(
+                    "LAN binding requires CAPEGO_TOKEN and explicit --allowed-host PC_IP"
+                )
             hosts = ["localhost", "127.0.0.1", "[::1]", *args.allowed_host]
             if args.host not in {"0.0.0.0", "::"}:
                 hosts.append(args.host)
-            uvicorn.run(create_app(args.root, token=token, allowed_hosts=hosts), host=args.host, port=args.port)
+            uvicorn.run(
+                create_app(args.root, token=token, allowed_hosts=hosts),
+                host=args.host,
+                port=args.port,
+            )
         elif args.command == "verify":
             result = Store(args.root).verify(args.recording_id)
             emit(result)
             return 0 if result["status"] == "complete" else 1
-        elif args.command in {"simulate", "resume", "replay"}:
+        elif args.command in {"simulate", "resume", "replay", "import-egodex"}:
             transport = HTTPTransport(args.url, os.environ.get("CAPEGO_TOKEN"))
             session = None
             try:
                 if args.command == "resume":
                     outbox = Outbox(args.outbox)
                     session = CaptureSession.resume(transport, outbox)
+                elif args.command == "import-egodex":
+                    from .importers.egodex import EgoDexSource
+
+                    source = EgoDexSource(
+                        args.video, confidence_threshold=args.confidence_threshold
+                    )
+                    outbox = Outbox(args.outbox)
+                    session = CaptureSession(source.spec, transport, outbox)
+                    session.record(
+                        source.packets(), realtime=not args.fast, duration_ns=source.duration_ns
+                    )
                 elif args.command == "replay":
                     from .contracts import RecordingSpec
+
                     source = Store(args.source_root)
                     original = source.require_complete(args.recording_id)
-                    spec = RecordingSpec.model_validate(original["spec"]).model_copy(update={"id": f"replay-{uuid.uuid4().hex}", "origin": "replay"})
+                    spec = RecordingSpec.model_validate(original["spec"]).model_copy(
+                        update={"id": f"replay-{uuid.uuid4().hex}", "origin": "replay"}
+                    )
                     outbox = Outbox(args.outbox)
                     session = CaptureSession(spec, transport, outbox)
-                    session.record(replay_packets(source, args.recording_id, spec.id), realtime=not args.fast,
-                                   duration_ns=original["end"]["ended_at_ns"])
+                    session.record(
+                        replay_packets(source, args.recording_id, spec.id),
+                        realtime=not args.fast,
+                        duration_ns=original["end"]["ended_at_ns"],
+                    )
                 else:
                     if not 0 < args.seconds <= 86400:
                         raise ValueError("seconds must be in (0, 86400]")
                     rid = args.id or f"sim-{uuid.uuid4().hex[:16]}"
-                    spec = synthetic_spec(rid, width=args.width, height=args.height, fps=args.fps,
-                                          imu_hz=args.imu_hz, chunk_seconds=args.chunk_seconds)
-                    outbox = Outbox(args.outbox or Path("runtime/device") / f"{rid}.sqlite3", int(args.cache_mib * 1024**2))
+                    spec = synthetic_spec(
+                        rid,
+                        width=args.width,
+                        height=args.height,
+                        fps=args.fps,
+                        imu_hz=args.imu_hz,
+                        chunk_seconds=args.chunk_seconds,
+                    )
+                    outbox = Outbox(
+                        args.outbox or Path("runtime/device") / f"{rid}.sqlite3",
+                        int(args.cache_mib * 1024**2),
+                    )
                     session = CaptureSession(spec, transport, outbox)
-                    session.record(synthetic_packets(spec, args.seconds), realtime=not args.fast, duration_ns=int(args.seconds * 1e9))
+                    session.record(
+                        synthetic_packets(spec, args.seconds),
+                        realtime=not args.fast,
+                        duration_ns=int(args.seconds * 1e9),
+                    )
                 saved = session.wait_saved(args.wait)
-                result = {"recording_id": session.spec.id, "saved": saved, "outbox": str(outbox.path),
-                          **outbox.stats(), "error": session.error, "transport_error": session.last_transport_error}
+                result = {
+                    "recording_id": session.spec.id,
+                    "saved": saved,
+                    "outbox": str(outbox.path),
+                    **outbox.stats(),
+                    "error": session.error,
+                    "transport_error": session.last_transport_error,
+                }
                 if saved:
-                    result["verification"] = transport.request("POST", f"/api/v1/recordings/{session.spec.id}/verification")
+                    result["verification"] = transport.request(
+                        "POST", f"/api/v1/recordings/{session.spec.id}/verification"
+                    )
                     saved = result["verification"]["status"] == "complete"
                 emit(result)
                 return 0 if saved else 2

@@ -132,13 +132,17 @@ class Store:
             existing = db.execute("SELECT spec FROM recordings WHERE id=?", (spec.id,)).fetchone()
             if existing:
                 if existing["spec"] != body:
-                    raise StoreError("recording_conflict", "Recording ID already has different metadata")
+                    raise StoreError(
+                        "recording_conflict", "Recording ID already has different metadata"
+                    )
             else:
                 folder = self.root / "recordings" / spec.id
                 atomic_write(folder / "recording.json", body.encode())
                 fsync_dir(folder.parent)
-                db.execute("INSERT INTO recordings VALUES (?,?,?,NULL,?,NULL)",
-                           (spec.id, body, "recording", utc_now()))
+                db.execute(
+                    "INSERT INTO recordings VALUES (?,?,?,NULL,?,NULL)",
+                    (spec.id, body, "recording", utc_now()),
+                )
         return self.recording(spec.id)
 
     def recording(self, recording_id: str) -> dict:
@@ -147,16 +151,33 @@ class Store:
             row = db.execute("SELECT * FROM recordings WHERE id=?", (recording_id,)).fetchone()
             if row is None:
                 raise StoreError("not_found", "Recording not found", 404)
-            stats = db.execute("SELECT COUNT(*) count, COALESCE(SUM(bytes),0) bytes FROM packets WHERE recording_id=?", (recording_id,)).fetchone()
-        return {"id": recording_id, "spec": json.loads(row["spec"]), "status": row["status"],
-                "end": json.loads(row["end_spec"]) if row["end_spec"] else None,
-                "created_at": row["created_at"], "error": row["error"], **dict(stats)}
+            stats = db.execute(
+                "SELECT COUNT(*) count, COALESCE(SUM(bytes),0) bytes FROM packets WHERE recording_id=?",
+                (recording_id,),
+            ).fetchone()
+        return {
+            "id": recording_id,
+            "spec": json.loads(row["spec"]),
+            "status": row["status"],
+            "end": json.loads(row["end_spec"]) if row["end_spec"] else None,
+            "created_at": row["created_at"],
+            "error": row["error"],
+            **dict(stats),
+        }
 
     def recordings(self, limit=100, offset=0) -> dict:
         with self.connection() as db:
-            ids = db.execute("SELECT id FROM recordings ORDER BY created_at DESC LIMIT ? OFFSET ?", (limit, offset)).fetchall()
+            ids = db.execute(
+                "SELECT id FROM recordings ORDER BY created_at DESC LIMIT ? OFFSET ?",
+                (limit, offset),
+            ).fetchall()
             count = db.execute("SELECT COUNT(*) FROM recordings").fetchone()[0]
-        return {"items": [self.recording(r["id"]) for r in ids], "total": count, "limit": limit, "offset": offset}
+        return {
+            "items": [self.recording(r["id"]) for r in ids],
+            "total": count,
+            "limit": limit,
+            "offset": offset,
+        }
 
     @staticmethod
     def validate_payload(packet: Packet, spec: RecordingSpec) -> None:
@@ -174,6 +195,14 @@ class Store:
                     if img.format != {"jpeg": "JPEG", "png": "PNG"}[packet.codec]:
                         raise ValueError("Image codec does not match bytes")
                     img.verify()
+            elif stream.kind == "tracking":
+                from .geometry import TrackingFrame
+
+                if packet.codec != "tracking_json":
+                    raise ValueError("Tracking packet requires tracking_json codec")
+                frame = TrackingFrame.model_validate_json(payload)
+                if frame.timestamp_ns != packet.timestamp_ns:
+                    raise ValueError("Tracking payload timestamp differs from packet")
             else:
                 if packet.codec != "imu_json":
                     raise ValueError("IMU packet requires imu_json codec")
@@ -193,34 +222,62 @@ class Store:
         encoded = packet.wire_bytes()
         digest = sha256(encoded)
         with self.connection(write=True) as db:
-            rec = db.execute("SELECT * FROM recordings WHERE id=?", (packet.recording_id,)).fetchone()
+            rec = db.execute(
+                "SELECT * FROM recordings WHERE id=?", (packet.recording_id,)
+            ).fetchone()
             if rec is None:
                 raise StoreError("not_found", "Create recording before sending packets", 404)
-            existing = db.execute("SELECT * FROM packets WHERE recording_id=? AND sequence=?", (packet.recording_id, packet.sequence)).fetchone()
+            existing = db.execute(
+                "SELECT * FROM packets WHERE recording_id=? AND sequence=?",
+                (packet.recording_id, packet.sequence),
+            ).fetchone()
             if existing:
                 if existing["sha256"] != digest:
                     raise StoreError("packet_conflict", "Sequence already contains different data")
                 path = self.root / existing["path"]
                 if not path.is_file() or sha256(path.read_bytes()) != digest:
-                    raise StoreError("integrity_error", "Previously stored packet failed verification", 409)
+                    raise StoreError(
+                        "integrity_error", "Previously stored packet failed verification", 409
+                    )
             else:
                 if rec["status"] == "complete":
                     raise StoreError("recording_closed", "Cannot append to a completed recording")
                 spec = RecordingSpec.model_validate_json(rec["spec"])
                 if rec["end_spec"]:
                     end = EndRecording.model_validate_json(rec["end_spec"])
-                    if packet.sequence >= end.packet_count or packet.timestamp_ns >= end.ended_at_ns:
-                        raise StoreError("outside_recording", "Packet falls outside the frozen recording")
+                    if (
+                        packet.sequence >= end.packet_count
+                        or packet.timestamp_ns >= end.ended_at_ns
+                    ):
+                        raise StoreError(
+                            "outside_recording", "Packet falls outside the frozen recording"
+                        )
                 self.validate_payload(packet, spec)
                 self.ready()
                 bucket = packet.timestamp_ns // spec.chunk_duration_ns
-                path = self.root / "recordings" / packet.recording_id / "chunks" / f"{bucket:08d}" / f"{packet.sequence:012d}.json"
+                path = (
+                    self.root
+                    / "recordings"
+                    / packet.recording_id
+                    / "chunks"
+                    / f"{bucket:08d}"
+                    / f"{packet.sequence:012d}.json"
+                )
                 atomic_write(path, encoded)
                 fsync_dir(path.parent.parent)
                 fsync_dir(path.parent.parent.parent)
-                db.execute("INSERT INTO packets VALUES (?,?,?,?,?,?,?)", (
-                    packet.recording_id, packet.sequence, packet.timestamp_ns, packet.stream_id,
-                    digest, str(path.relative_to(self.root)), len(encoded)))
+                db.execute(
+                    "INSERT INTO packets VALUES (?,?,?,?,?,?,?)",
+                    (
+                        packet.recording_id,
+                        packet.sequence,
+                        packet.timestamp_ns,
+                        packet.stream_id,
+                        digest,
+                        str(path.relative_to(self.root)),
+                        len(encoded),
+                    ),
+                )
         current = self.recording(packet.recording_id)
         if current["end"] and current["count"] >= current["end"]["packet_count"]:
             self.verify(packet.recording_id)
@@ -236,7 +293,10 @@ class Store:
             if row["end_spec"] and row["end_spec"] != body:
                 raise StoreError("end_conflict", "Recording boundary is already frozen")
             if not row["end_spec"]:
-                db.execute("UPDATE recordings SET end_spec=?,status='awaiting_data' WHERE id=?", (body, recording_id))
+                db.execute(
+                    "UPDATE recordings SET end_spec=?,status='awaiting_data' WHERE id=?",
+                    (body, recording_id),
+                )
                 atomic_write(self.root / "recordings" / recording_id / "end.json", body.encode())
         return self.verify(recording_id)
 
@@ -247,9 +307,13 @@ class Store:
             if row is None:
                 raise StoreError("not_found", "Recording not found", 404)
             if not row["end_spec"]:
-                raise StoreError("still_recording", "End recording before completeness verification")
+                raise StoreError(
+                    "still_recording", "End recording before completeness verification"
+                )
             end = EndRecording.model_validate_json(row["end_spec"])
-            packets = db.execute("SELECT * FROM packets WHERE recording_id=? ORDER BY sequence", (recording_id,)).fetchall()
+            packets = db.execute(
+                "SELECT * FROM packets WHERE recording_id=? ORDER BY sequence", (recording_id,)
+            ).fetchall()
             error = None
             if len(packets) < end.packet_count:
                 status = "awaiting_data"
@@ -257,11 +321,16 @@ class Store:
                 status = "complete"
                 try:
                     folder = self.root / "recordings" / recording_id
-                    if (folder / "recording.json").read_bytes() != row["spec"].encode() or (folder / "end.json").read_bytes() != row["end_spec"].encode():
+                    if (folder / "recording.json").read_bytes() != row["spec"].encode() or (
+                        folder / "end.json"
+                    ).read_bytes() != row["end_spec"].encode():
                         raise ValueError("Recording metadata file differs from frozen index")
                     if [p["sequence"] for p in packets] != list(range(end.packet_count)):
                         raise ValueError("Packet sequence does not match recording end manifest")
-                    if sequence_digest([(p["sequence"], p["sha256"]) for p in packets]) != end.content_sha256:
+                    if (
+                        sequence_digest([(p["sequence"], p["sha256"]) for p in packets])
+                        != end.content_sha256
+                    ):
                         raise ValueError("Recording content digest mismatch")
                     last_times = {}
                     for p in packets:
@@ -275,7 +344,9 @@ class Store:
                         last_times[p["stream_id"]] = p["timestamp_ns"]
                 except (ValueError, OSError) as exc:
                     status, error = "integrity_failed", str(exc)
-            db.execute("UPDATE recordings SET status=?,error=? WHERE id=?", (status, error, recording_id))
+            db.execute(
+                "UPDATE recordings SET status=?,error=? WHERE id=?", (status, error, recording_id)
+            )
         return self.recording(recording_id)
 
     def packet_rows(self, recording_id: str, stream_id: str | None = None) -> list[dict]:
@@ -298,7 +369,9 @@ class Store:
     def require_complete(self, recording_id: str) -> dict:
         rec = self.recording(recording_id)
         if not rec["end"]:
-            raise StoreError("not_complete", "Recording must end and be fully saved before processing")
+            raise StoreError(
+                "not_complete", "Recording must end and be fully saved before processing"
+            )
         rec = self.verify(recording_id)
         if rec["status"] != "complete":
             raise StoreError("not_complete", "Recording is incomplete or corrupt")

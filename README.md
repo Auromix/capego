@@ -1,98 +1,98 @@
 # CapEgo
 
-**Open-source egocentric capture and dataset toolkit.**
+**From first-person capture to traceable training data.**
 
-**开源第一视角采集与数据集工具链。**
+[English](README.md) · [简体中文](README.zh-CN.md)
 
-> **Status: software prototype / 软件原型。** Continuous capture, durable PC storage, explicit processing, review, dataset snapshots and export run without physical hardware. Synthetic ego data has passed the unmodified EgoWAM Human loader and a reduced HPT world/action training smoke test on macOS CPU. Physical sensors, metric hand reconstruction, released model recipes and NVIDIA GPU operation remain separate validation items.
+[![Tests](https://github.com/Auromix/capego/actions/workflows/tests.yml/badge.svg)](https://github.com/Auromix/capego/actions/workflows/tests.yml)
+[![License: Apache 2.0](https://img.shields.io/badge/License-Apache%202.0-blue.svg)](LICENSE)
+[![Python 3.11+](https://img.shields.io/badge/python-3.11%2B-blue.svg)](pyproject.toml)
 
-[观看软件验证演示 / Video demo](design/validation/video-demo.md) · [云端 Codex 接续 / Cloud handoff](design/validation/cloud-handoff.md)
+CapEgo is an open-source **egocentric data collection and dataset toolkit** for developers working with human-hand activity and world action models (WAMs). Stream recordings to a PC, run local post-processing when you choose, review annotations, and export versioned datasets with their provenance intact.
 
-## Run the prototype / 运行原型
+**Status: working software prototype.** Real public EgoDex clips have passed the HTTP capture pipeline and the unmodified EgoWAM Human loader, then participated in a small world/action training run. Wearable hardware and production capture performance remain under development. [Read the evidence and limits →](design/validation/2026-09-24-real-data.md)
 
-Requires Python 3.11+. Run in two terminals:
+## Why CapEgo?
+
+- **Continuous capture:** send while recording; release temporary device buffers only after durable PC acknowledgements. Recover interrupted transfers without restarting the recording.
+- **Local control:** receiving data never starts processing. Run processing independently on completed, verified recordings.
+- **Reviewable annotations:** local VLM proposals or imported source annotations, explicit uncertainty, and versioned human corrections.
+- **Traceable datasets:** immutable snapshots, checksums, source timestamps and validity masks. Missing geometry stays missing.
+- **Measured training compatibility:** native HDF5 export and a pinned EgoWAM adapter, checked with actual loader, loss, gradients and parameter updates.
+- **Replaceable components:** capture sources, processing backends and export writers have separate modules. No mandatory cloud service.
+
+```mermaid
+flowchart LR
+    A[Wearable source or dataset replay] --> B[Temporary outbox]
+    B -->|Continuous HTTP| C[PC raw archive]
+    C -->|Durable acknowledgement| B
+    C -->|User starts processing| D[Checks and automatic annotation]
+    D --> E[Review]
+    E --> F[Immutable dataset snapshot]
+    F --> G[HDF5 or EgoWAM export]
+```
+
+## Quick start
+
+Python 3.11+; developed on macOS, with Ubuntu 24.04 and macOS CI. Install from this repository:
 
 ```bash
+git clone https://github.com/Auromix/capego.git
+cd capego
 python3 -m venv .venv
 source .venv/bin/activate
 pip install -e '.[dev,export]'
+python scripts/demo_pipeline.py --root runtime/demo --egowam
+```
+
+This small **synthetic** demo starts its own receiver, streams data over HTTP, processes it, freezes a dataset and exports it. It stops its receiver when finished. For interactive use:
+
+```bash
 capego serve --root runtime/pc
-# Another terminal, using the same virtual environment:
+# In another terminal with the same environment:
 capego simulate --seconds 5
 ```
 
-The receiver saves packets while capture is running. `capego resume runtime/device/<id>.sqlite3` drains an interrupted outbox. `capego verify <id>` checks PC completeness. `pytest -q` runs fault/recovery tests. See [the implemented protocol](design/system/protocol-v1.md). Runtime data is excluded from Git.
+Open **http://localhost:8765**. Select a completed recording, choose a processing backend, check its annotations, save a dataset version and export it. Choose `synthetic` only for generated test data.
 
-Open **http://localhost:8765** for the offline workbench. Select completed recordings, explicitly start processing, review annotations, save a named dataset and export. `synthetic` processing is a test fixture restricted to synthetic recordings; `quality` performs basic data checks; `local_vlm` requires a separately provisioned local model. Missing geometry is never filled by human approval.
+## Try real ego data
 
-```bash
-# One-command HTTP pipeline test (starts and stops its own receiver)
-pip install -e '.[dev,export]'
-python scripts/demo_pipeline.py --root runtime/demo --egowam
-
-# Independent processing; receiver need not be running
-capego process RECORDING_ID --backend synthetic
-capego dataset 'Tabletop v1' PROCESSING_ID:task-1
-capego export DATASET_ID --format egowam
-```
-
-For target-loader and actual loss/backprop validation:
+The real-data check uses three short public EgoDex clips: opening a lid, handling a bottle cap, and folding clothing. It includes an actual receiver process crash/restart and rejects training export when hand confidence is missing.
 
 ```bash
-pip install -e '.[training]' -r requirements-upstream-smoke.txt
-git clone https://github.com/GaTech-RL2/EgoWAM.git runtime/EgoWAM
-git -C runtime/EgoWAM checkout c87617fe37a6ed6a951e6b176ad552200c425c93
-python scripts/validate_egowam.py --upstream runtime/EgoWAM \
-  --demo-report runtime/demo/demo-report.json --output runtime/validation/egowam.json
+pip install -e '.[data,export]'
+python scripts/fetch_egodex_samples.py
+python scripts/validate_real_pipeline.py --root runtime/real-validation
 ```
 
-This uses EgoWAM's actual Human transforms and HPTModel joint world/action loss with a small configuration and pooled RGB features, without robot data or downloaded pretrained weights. It verifies data use, **not** released-model performance. See [workbench/processing boundaries](design/system/workbench-v1.md).
+Downloads only selected ZIP members (about 21 MB), not the full archive. The script uses isolated, explicitly labelled test reviews; it does **not** certify annotation accuracy. EgoDex has its own **CC-BY-NC-ND** data terms; downloaded data and derivatives stay local. [Real-data walkthrough, geometry conventions and training commands →](docs/real-data.md)
 
-Local Qwen2.5-VL-3B inference has also run on macOS MPS with synthetic frames. Its constrained semantic proposals require human review; real object tracking and metric geometry estimation are still pending. [Validation evidence](design/validation/2026-09-24-software.md) · [Ubuntu/GPU/model setup](design/validation/ubuntu-runbook.md).
+## What works today?
 
-LAN deployment: set the same `CAPEGO_TOKEN` environment variable on receiver and capture process, then run `capego serve --host 0.0.0.0 --allowed-host PC_LAN_IP` and `capego simulate --url http://PC_LAN_IP:8765`. Use only a trusted LAN or a TLS reverse proxy; do not commit tokens. `capego doctor` reports environment readiness without printing credentials.
-
-CapEgo is being designed for open-source developers and researchers, starting with a reproducible reference setup for one person performing tabletop hand operations. During recording, the capture device continuously transfers data to another PC running Ubuntu 24.04 on the same LAN, where it is saved to disk. Users explicitly start batch post-processing; automatic annotation, human review, and versioned dataset production then take place locally. Exported datasets must be validated against named open-source WAM training repositories and versions before compatibility is claimed.
-
-项目面向开源开发者和研究者，首版提供个人或单个实验台能够完整复现的方案，从桌面物体操作开始，并保留更换采集设备、处理工具和导出方式的扩展空间。以下产品行为已确认，具体实现和量化验收条件仍需设计。
-
-| 产品范围 | 期望结果 |
+| Component | Current scope |
 | --- | --- |
-| 第一视角采集 | 头戴或胸戴，按按钮开始和结束；一次录制一个文件夹，分块存储、统一读取 |
-| 连续传输与保存 | 边采集边持续传输到局域网 Ubuntu 24.04 PC 落盘，设备临时缓存随 PC 可靠保存确认释放 |
-| 本地后处理与自动标注 | 用户选择已结束且完整落盘的采集，启动任务、双手运动、操作语义和质量处理 |
-| 人工检查 | 优先检查问题片段、抽查其余结果，少量纠正和补充 |
-| 数据治理与数据集生产 | 跨记录、跨处理批次筛选组合，保存命名数据集版本，重复导出相同内容 |
-| WAM 训练接入 | 验证 ego 数据被目标工程读取并实际参与最小训练；当前不规划机器人数据或要求模型效果复现 |
-| 操作与运行 | 可视化工作台为主、命令行为进阶入口；首次准备可联网，准备后全流程无互联网依赖 |
+| Capture / storage | HTTP streaming, durable ACKs, chunked recordings, retry, integrity checks; synthetic and EgoDex replay sources |
+| Processing | Exposure/timing checks, offline Qwen2.5-VL semantic proposals, imported EgoDex hand/camera estimates |
+| Review / datasets | Local web workbench, revision checks, immutable datasets, source verification |
+| Training export | HDF5 native sampling; EgoWAM Human Zarr adapter at a pinned commit |
+| Training validation | Real ego RGB + wrist/camera trajectories; actual CPU loss/backprop/updates in a reduced HPT configuration |
+| Still to validate | Physical cameras and IMU, hardware sync, sustained stereo bitrate, metric reconstruction from new RGB, object tracking, NVIDIA GPU and full training recipes |
 
-首版由同一台 Ubuntu 24.04 PC 承担接收存储、后处理和工作台，完整后处理以本地 GPU 为参考配置。开始录制前须确认 PC 已连接且能够接收保存。采集接收与后处理独立运行；后处理由用户主动发起，收到新数据不会自动启动。
+The real-data adapter provides **one RGB stream and source-estimated geometry**. It does not simulate a missing second camera or IMU. Training checks establish data usability, not model quality. The current wire format uses per-frame JPEG/PNG packets; production H.265/AV1 capture is not implemented.
 
-录制期间边采边传，PC 持续落盘；设备缓存只暂存尚未获得 PC 可靠保存确认的数据，并随确认持续释放。录制途中局域网中断时保留待确认数据，恢复后自动补传。缓存耗尽属于异常，直接结束本次录制、不自动续录，保留已有数据并继续完成传输。
+## Documentation
 
-结构化双手动作采用显式有效性与来源标记。当前 EgoWAM 适配已通过模拟数据的缩小配置训练验证；真实三维手部结果和目标发布版训练配置仍待验证。
+- [Usage and local/LAN setup](docs/usage.md)
+- [Real-data validation and EgoWAM training](docs/real-data.md)
+- [Code architecture and extension points](docs/architecture.md)
+- [Product and system design](design/README.md) — authoritative design documents, primarily Chinese
+- [Software demonstration video](design/validation/video-demo.md) — earlier synthetic workbench demonstration
+- [Contributing](CONTRIBUTING.md) · [Changelog](CHANGELOG.md) · [Security](SECURITY.md)
 
-## Start here / 从这里开始
+## Contribute
 
-- [设计入口](design/README.md)
-- [已确认的产品范围](design/product/scope.md)
-- [完整使用流程](design/product/workflow.md)
-- [总体架构与采集保存](design/system/overview.md)
-- [后处理、检查与数据集版本](design/data/processing.md)
-- [客户提供的候选规格](design/product/customer-inputs.md)
-- [数据处理与数据集生产](design/data/README.md)
-- [WAM 训练接入要求](design/data/training-integration.md)
-- [接下来的设计讨论](design/discussion.md)
-- [项目工作约定](AGENTS.md)
+Start with an [issue](https://github.com/Auromix/capego/issues) or a small pull request. Useful contributions include a real camera adapter, stronger quality checks, geometry backends, dataset adapters and reproducible hardware measurements. Include the data origin and validation scope with every result. See [CONTRIBUTING.md](CONTRIBUTING.md).
 
-## Design approach / 设计方式
+## License
 
-先讨论使用者、任务、交付结果和产品边界，再确定软硬件架构、接口、选型和验证方法。`design/` 内的 Markdown 是设计来源；已确认范围、候选方案、实现、测试和验收分别表述。
-
-参考部署和主要数据行为已确认。HTTP/SQLite/JSON 原型协议、HDF5 导出和具名 EgoWAM 适配已实现；相机、安装、采集计算平台、硬同步、生产视频编码、真实几何模型和 GPU 配置仍待验证。客户提供的性能指标是需求输入，不是已实现或已承诺的能力。
-
-## Open-source scope and licensing / 开源范围与许可
-
-开源方向已确定。软件、硬件设计、文档与示例数据的具体许可证尚待讨论，当前尚未配置 LICENSE；公开可见不等于已授予开源许可。
-
-仓库用于设计及后续可公开的工程材料。真实采集数据、客户原始资料、个人信息、凭据和本地产生的数据集不应直接提交到仓库。后续公开示例数据时，应单独说明来源和许可。
+CapEgo code and original documentation are licensed under **[Apache License 2.0](LICENSE)**. Third-party datasets, model weights and upstream projects keep their own licenses; see [THIRD_PARTY.md](THIRD_PARTY.md). No external dataset or model weights are bundled.

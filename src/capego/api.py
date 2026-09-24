@@ -40,45 +40,92 @@ def create_app(root: str | Path, token: str | None = None, allowed_hosts=None) -
     app.state.store = store
     app.state.processor = Processor(store)
     app.mount("/static", StaticFiles(directory=Path(__file__).parent / "static"), name="static")
-    app.add_middleware(TrustedHostMiddleware, allowed_hosts=allowed_hosts or ["localhost", "127.0.0.1", "[::1]", "testserver"])
+    app.add_middleware(
+        TrustedHostMiddleware,
+        allowed_hosts=allowed_hosts or ["localhost", "127.0.0.1", "[::1]", "testserver"],
+    )
 
     @app.middleware("http")
     async def access(request: Request, call_next):
         if request.url.path.startswith("/api/"):
-            if token and not hmac.compare_digest(request.headers.get("authorization", ""), f"Bearer {token}"):
-                return JSONResponse({"error": {"code": "unauthorized", "message": "Receiver token required"}}, status_code=401)
+            if token and not hmac.compare_digest(
+                request.headers.get("authorization", ""), f"Bearer {token}"
+            ):
+                return JSONResponse(
+                    {"error": {"code": "unauthorized", "message": "Receiver token required"}},
+                    status_code=401,
+                )
             origin = request.headers.get("origin")
             if origin and origin != f"{request.url.scheme}://{request.headers.get('host')}":
-                return JSONResponse({"error": {"code": "origin_rejected", "message": "Cross-origin API access is disabled"}}, status_code=403)
+                return JSONResponse(
+                    {
+                        "error": {
+                            "code": "origin_rejected",
+                            "message": "Cross-origin API access is disabled",
+                        }
+                    },
+                    status_code=403,
+                )
             try:
                 length = int(request.headers.get("content-length", "0"))
             except ValueError:
-                return JSONResponse({"error": {"code": "invalid_length", "message": "Invalid content length"}}, status_code=400)
+                return JSONResponse(
+                    {"error": {"code": "invalid_length", "message": "Invalid content length"}},
+                    status_code=400,
+                )
             if length > 16 * 1024**2:
-                return JSONResponse({"error": {"code": "body_too_large", "message": "Packet exceeds receiver limit"}}, status_code=413)
+                return JSONResponse(
+                    {
+                        "error": {
+                            "code": "body_too_large",
+                            "message": "Packet exceeds receiver limit",
+                        }
+                    },
+                    status_code=413,
+                )
             if request.method in {"POST", "PUT", "PATCH"}:
                 chunks, size = [], 0
                 async for chunk in request.stream():
                     size += len(chunk)
                     if size > 16 * 1024**2:
-                        return JSONResponse({"error": {"code": "body_too_large", "message": "Packet exceeds receiver limit"}}, status_code=413)
+                        return JSONResponse(
+                            {
+                                "error": {
+                                    "code": "body_too_large",
+                                    "message": "Packet exceeds receiver limit",
+                                }
+                            },
+                            status_code=413,
+                        )
                     chunks.append(chunk)
                 request._body = b"".join(chunks)
         response = await call_next(request)
         response.headers["X-Content-Type-Options"] = "nosniff"
         response.headers["Cache-Control"] = "no-store"
-        response.headers["Content-Security-Policy"] = "default-src 'self'; img-src 'self' blob: data:; media-src 'self' blob:; style-src 'self'; script-src 'self'; frame-ancestors 'none'"
+        response.headers["Content-Security-Policy"] = (
+            "default-src 'self'; img-src 'self' blob: data:; media-src 'self' blob:; style-src 'self'; script-src 'self'; frame-ancestors 'none'"
+        )
         return response
 
     @app.exception_handler(StoreError)
     async def store_error(request, exc):
-        return JSONResponse({"error": {"code": exc.code, "message": exc.message}}, status_code=exc.status)
+        return JSONResponse(
+            {"error": {"code": exc.code, "message": exc.message}}, status_code=exc.status
+        )
 
     @app.exception_handler(RequestValidationError)
     async def validation_error(request, exc):
         # Do not echo raw request bodies (which may include frames or credentials).
-        return JSONResponse({"error": {"code": "validation_error", "message": "Request does not match the API contract",
-                                      "fields": [".".join(map(str, item["loc"])) for item in exc.errors()]}}, status_code=422)
+        return JSONResponse(
+            {
+                "error": {
+                    "code": "validation_error",
+                    "message": "Request does not match the API contract",
+                    "fields": [".".join(map(str, item["loc"])) for item in exc.errors()],
+                }
+            },
+            status_code=422,
+        )
 
     @app.get("/health")
     def health():
@@ -126,10 +173,19 @@ def create_app(root: str | Path, token: str | None = None, allowed_hosts=None) -
         return Response(packet.payload(), media_type=f"image/{packet.codec}")
 
     @app.get("/api/v1/recordings/{recording_id}/timeline")
-    def timeline(recording_id: str, limit: int = Query(500, ge=1, le=5000), offset: int = Query(0, ge=0)):
+    def timeline(
+        recording_id: str, limit: int = Query(500, ge=1, le=5000), offset: int = Query(0, ge=0)
+    ):
         rows = store.packet_rows(recording_id)
-        return {"items": [{k: r[k] for k in ("sequence", "stream_id", "timestamp_ns", "sha256")} for r in rows[offset:offset+limit]],
-                "total": len(rows), "limit": limit, "offset": offset}
+        return {
+            "items": [
+                {k: r[k] for k in ("sequence", "stream_id", "timestamp_ns", "sha256")}
+                for r in rows[offset : offset + limit]
+            ],
+            "total": len(rows),
+            "limit": limit,
+            "offset": offset,
+        }
 
     @app.get("/")
     def workbench():
@@ -184,6 +240,7 @@ def create_app(root: str | Path, token: str | None = None, allowed_hosts=None) -
         if filename not in report["content_files"]:
             raise StoreError("not_found", "Export file not in manifest", 404)
         from .contracts import sha256
+
         path = store.root / "exports" / export_id / filename
         if not path.is_file() or sha256(path.read_bytes()) != report["content_files"][filename]:
             raise StoreError("export_corrupt", "Export file integrity failed")

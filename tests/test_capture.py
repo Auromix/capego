@@ -40,15 +40,28 @@ class LocalTransport:
 
 
 def setup_capture(tmp_path, **kwargs):
-    spec = synthetic_spec("test-recording", width=64, height=48, fps=5, imu_hz=20, chunk_seconds=.2)
+    spec = synthetic_spec(
+        "test-recording", width=64, height=48, fps=5, imu_hz=20, chunk_seconds=0.2
+    )
     store = Store(tmp_path / "pc", min_free_bytes=0)
     transport = LocalTransport(store)
     outbox = Outbox(tmp_path / "device" / "outbox.sqlite3", **kwargs)
-    return spec, store, transport, outbox, CaptureSession(spec, transport, outbox, retry_delay=.005)
+    return (
+        spec,
+        store,
+        transport,
+        outbox,
+        CaptureSession(spec, transport, outbox, retry_delay=0.005),
+    )
 
 
 def freeze(packets, reason="user", ended_at_ns=1_000_000_000):
-    return EndRecording(packet_count=len(packets), content_sha256=sequence_digest([(p.sequence, p.digest()) for p in packets]), ended_at_ns=ended_at_ns, reason=reason)
+    return EndRecording(
+        packet_count=len(packets),
+        content_sha256=sequence_digest([(p.sequence, p.digest()) for p in packets]),
+        ended_at_ns=ended_at_ns,
+        reason=reason,
+    )
 
 
 def test_continuous_receive_and_cache_release_before_end(tmp_path):
@@ -63,7 +76,9 @@ def test_continuous_receive_and_cache_release_before_end(tmp_path):
                 source_held.set()
                 assert release_source.wait(20), "Test must release the unfinished source"
 
-    producer = threading.Thread(target=lambda: session.record(source(), realtime=False, duration_ns=1_000_000_000))
+    producer = threading.Thread(
+        target=lambda: session.record(source(), realtime=False, duration_ns=1_000_000_000)
+    )
     producer.start()
     deadline = time.monotonic() + 15
     try:
@@ -71,7 +86,7 @@ def test_continuous_receive_and_cache_release_before_end(tmp_path):
         while time.monotonic() < deadline:
             if outbox.stats()["produced"] >= 5 and outbox.stats()["pending"] == 0:
                 break
-            time.sleep(.01)
+            time.sleep(0.01)
         rec = store.recording(spec.id)
         assert rec["status"] == "recording"
         assert rec["count"] >= 5
@@ -92,9 +107,9 @@ def test_disconnect_lost_ack_and_resume_do_not_duplicate(tmp_path):
     spec, store, transport, outbox, session = setup_capture(tmp_path)
     session.start()
     transport.online = False
-    session.record(synthetic_packets(spec, .5), realtime=False, duration_ns=500_000_000)
+    session.record(synthetic_packets(spec, 0.5), realtime=False, duration_ns=500_000_000)
     assert outbox.stats()["pending"] == 16
-    assert not session.wait_saved(.03)
+    assert not session.wait_saved(0.03)
     session.close()
     transport.online = True
     transport.lose_ack_once = True
@@ -162,7 +177,7 @@ def test_end_digest_and_start_metadata_conflicts(tmp_path):
     store.create(spec)
     with pytest.raises(StoreError, match="different metadata"):
         store.create(spec.model_copy(update={"device_id": "other"}))
-    packets = list(synthetic_packets(spec, .1))
+    packets = list(synthetic_packets(spec, 0.1))
     for p in packets:
         store.receive(p)
     wrong = freeze(packets).model_copy(update={"content_sha256": "0" * 64})
@@ -177,25 +192,45 @@ def test_api_auth_origin_and_validation(tmp_path):
         assert client.get("/api/v1/ready").status_code == 401
         headers = {"Authorization": "Bearer test-only-token"}
         assert client.get("/api/v1/ready", headers=headers).status_code == 200
-        assert client.get("/api/v1/ready", headers={**headers, "Origin": "https://other.example"}).status_code == 403
+        assert (
+            client.get(
+                "/api/v1/ready", headers={**headers, "Origin": "https://other.example"}
+            ).status_code
+            == 403
+        )
         response = client.post("/api/v1/recordings", headers=headers, json={"id": "../../bad"})
         assert response.status_code == 422
         assert "../../bad" not in response.text
         spec = synthetic_spec("api", width=64, height=48)
-        assert client.post("/api/v1/recordings", headers=headers, json=spec.model_dump()).status_code == 201
-        packet = next(synthetic_packets(spec, .1))
-        assert client.put("/api/v1/recordings/api/packets/1", headers=headers, json=packet.model_dump()).status_code == 422
-        response = client.put("/api/v1/recordings/api/packets/0", headers=headers, json=packet.model_dump())
+        assert (
+            client.post("/api/v1/recordings", headers=headers, json=spec.model_dump()).status_code
+            == 201
+        )
+        packet = next(synthetic_packets(spec, 0.1))
+        assert (
+            client.put(
+                "/api/v1/recordings/api/packets/1", headers=headers, json=packet.model_dump()
+            ).status_code
+            == 422
+        )
+        response = client.put(
+            "/api/v1/recordings/api/packets/0", headers=headers, json=packet.model_dump()
+        )
         assert response.json()["durable"] is True
-        assert client.get("/api/v1/recordings/api/frames/0", headers=headers).headers["content-type"] == "image/jpeg"
+        assert (
+            client.get("/api/v1/recordings/api/frames/0", headers=headers).headers["content-type"]
+            == "image/jpeg"
+        )
 
 
 def test_wrong_ack_cannot_release_cache_and_end_keeps_last_sample(tmp_path):
     spec, store, transport, outbox, session = setup_capture(tmp_path)
-    packet = next(synthetic_packets(spec, .1))
+    packet = next(synthetic_packets(spec, 0.1))
     outbox.put(packet)
     with pytest.raises(StoreError, match="exact packet"):
-        outbox.acknowledge(packet, PacketAck(recording_id=spec.id, sequence=packet.sequence, sha256="0"*64))
+        outbox.acknowledge(
+            packet, PacketAck(recording_id=spec.id, sequence=packet.sequence, sha256="0" * 64)
+        )
     assert outbox.stats()["pending"] == 1
     end = outbox.freeze("user")
     assert end.ended_at_ns > packet.timestamp_ns
@@ -205,7 +240,7 @@ def test_metadata_tampering_blocks_completion(tmp_path):
     spec = synthetic_spec("metadata", width=64, height=48)
     store = Store(tmp_path, min_free_bytes=0)
     store.create(spec)
-    packets = list(synthetic_packets(spec, .1))
+    packets = list(synthetic_packets(spec, 0.1))
     for p in packets:
         store.receive(p)
     store.end(spec.id, freeze(packets))

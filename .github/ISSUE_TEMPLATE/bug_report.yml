@@ -1,0 +1,21 @@
+name: Bug report / 问题反馈
+description: Report a reproducible failure.
+body:
+  - type: textarea
+    id: problem
+    attributes:
+      label: Expected and actual behavior / 预期与实际结果
+    validations:
+      required: true
+  - type: textarea
+    id: reproduce
+    attributes:
+      label: Reproduction / 复现步骤
+      description: Include commands, commit, OS, Python version and data origin. Do not upload private recordings or tokens.
+    validations:
+      required: true
+  - type: textarea
+    id: evidence
+    attributes:
+      label: Logs and scope / 日志及影响
+      description: Remove credentials and identifying information.

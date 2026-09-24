@@ -7,6 +7,9 @@ name = "capego"
 version = "0.1.0"
 description = "Continuous egocentric capture and local dataset production"
 readme = "README.md"
+license = "Apache-2.0"
+license-files = ["LICENSE"]
+keywords = ["egocentric", "ego", "data-collection", "world-action-model", "dataset"]
 requires-python = ">=3.11"
 dependencies = [
   "fastapi>=0.115,<1", "uvicorn>=0.30,<1", "httpx>=0.27,<1",
@@ -14,7 +17,13 @@ dependencies = [
   "imageio-ffmpeg>=0.5,<1",
 ]
 
+[project.urls]
+Homepage = "https://github.com/Auromix/capego"
+Repository = "https://github.com/Auromix/capego"
+Issues = "https://github.com/Auromix/capego/issues"
+
 [project.optional-dependencies]
+data = ["av>=14,<17", "scipy>=1.11,<2"]
 dev = ["pytest>=8,<10", "ruff>=0.9,<1"]
 export = ["zarr==3.1.5"]
 training = ["torch>=2.5,<3", "zarr==3.1.5", "simplejpeg", "pandas", "scipy", "boto3", "cloudpathlib", "sqlalchemy", "einops", "loguru", "matplotlib", "overrides"]
