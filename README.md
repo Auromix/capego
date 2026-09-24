@@ -6,6 +6,8 @@
 
 > **Status: software prototype / 软件原型。** Continuous capture, durable PC storage, explicit processing, review, dataset snapshots and export run without physical hardware. Synthetic ego data has passed the unmodified EgoWAM Human loader and a reduced HPT world/action training smoke test on macOS CPU. Physical sensors, metric hand reconstruction, released model recipes and NVIDIA GPU operation remain separate validation items.
 
+[观看软件验证演示 / Video demo](design/validation/video-demo.md) · [云端 Codex 接续 / Cloud handoff](design/validation/cloud-handoff.md)
+
 ## Run the prototype / 运行原型
 
 Requires Python 3.11+. Run in two terminals:

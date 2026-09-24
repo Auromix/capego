@@ -1,0 +1,33 @@
+{
+  "source_commit": "bc17c87660527cef7784e0ce17241dbb4fa7cef3",
+  "origin": "synthetic",
+  "recording": {
+    "id": "film-capture",
+    "status": "complete",
+    "packet_count": 3150,
+    "duration_ns": 45000000000,
+    "chunk_count": 9
+  },
+  "tests": {
+    "pytest_passed": 24,
+    "ruff": "passed"
+  },
+  "training_report": "egowam.json",
+  "processing": [
+    {
+      "id": "proc-0728b836f1ed4527bde176771b53e5dd",
+      "backend": "local_vlm",
+      "status": "failed",
+      "error": "ValueError: VLM response violates the annotation contract; raw response retained locally. :json_invalid"
+    },
+    {
+      "id": "proc-fa62ae4af14b416fae2c67a60953c5b4",
+      "backend": "synthetic",
+      "status": "succeeded",
+      "error": null
+    }
+  ],
+  "cloud_cuda": "not_verified",
+  "hardware": "not_available",
+  "video_method": "Edited real workbench screenshots with synthetic speech and report cards; not continuous screen recording."
+}
